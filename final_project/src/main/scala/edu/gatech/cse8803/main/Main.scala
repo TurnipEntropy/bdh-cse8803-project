@@ -16,6 +16,7 @@ import edu.gatech.cse8803.ioutils.CSVUtils
 import edu.gatech.cse8803.model._
 
 object Main {
+  type MapKeyValue = (Timestamp, InnerTuple)
   def main(args: Array[String]) {
     import org.apache.log4j.Logger
     import org.apache.log4j.Level
@@ -33,7 +34,12 @@ object Main {
       val prep = conn.prepareStatement("SELECT * FROM admissions WHERE subject_id = 61")
       val rs: ResultSet = prep.executeQuery()
     }*/
-
+    val (chartEvents, gcsEvents, inOut, septicLabels) = loadLocalRddRawData(sqlContext)
+    val allItemIds: RDD[Int] = sc.parallelize(Seq(220179, 220050, 228152, 227243, 225167, 220059, 225309,
+                    220180, 220051, 228151, 227242, 224643, 220060, 225310,
+                    220045, 220210, 223761, 220277, 220739, 223900, 223901,
+                    226756, 226758, 228112, 226757, 227011, 227012, 227014, 22900))
+    val features: RDD[(Long, MapKeyValue)] =
     sc.stop()
   }
 

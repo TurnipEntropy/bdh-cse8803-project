@@ -12,8 +12,13 @@ object ETL {
   type InnerTuple = (Int, SmallMap, SmallMap)
   type MapKeyValue = (Timestamp, InnerTuple)
   type LargeMap = mutable.Map[Timestamp, InnerTuple]
-  def grab_features() = {
 
+  def grab_features(chartEvents: RDD[ChartEvent], gcsEvents: RDD[gcsEvent],
+                    inOut: RDD[InOut], septicLables: RDD[SepticLabel],
+                    allItemIds: RDD[Int]): RDD[(Long, MapKeyValue)] = {
+
+    val emptyTimeSeries = createEmptyTimeSeries(inOut, allItemIds)
+    mergeFeatureRDDs(chartEvents, gcsEvents, emptyTimeSeries)
   }
 
   def mergeFeatureRDDs(chartEvents: RDD[ChartEvent], gcsEvents: RDD[gcsEvent], emptyTimeSeries: RDD[((Long, Timestamp), Double)]):
