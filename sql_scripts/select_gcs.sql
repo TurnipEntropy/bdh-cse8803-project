@@ -1,0 +1,1 @@
+﻿select * from d_items where label like '%GCS%';

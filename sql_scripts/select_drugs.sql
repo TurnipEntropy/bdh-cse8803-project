@@ -1,0 +1,1 @@
+﻿select drug, count(*) from prescriptions where drug like '%mycin%' group by drug

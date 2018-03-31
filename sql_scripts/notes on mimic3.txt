@@ -1,0 +1,21 @@
+systolic blood pressure: 51,6,455,6701,220179,220050
+pulse pressure: 29?
+heart rate: 211, 220045
+respiration rate: 219, 615, 618
+temperature: celsius = (223762, 676, 677)
+             fahrenheit = (223761, 678, 679)
+peripheral capillary oxygen saturation (SpO2): 646
+Glasgow Coma Score: Eye opening: 184
+                    Verbal Response: 723
+                    Motor Response: 454
+                    GCS Total: 198
+
+check 77, 29, 31, 32
+
+Do I use assisted systole at all? 55
+same for diastole, 59, 62
+
+blood flow ml/min: 79
+
+to get patients older than 15:
+extract(epoch from (ad.admittime - p.dob))/60.0/60.0/24.0/365.242 > 15
