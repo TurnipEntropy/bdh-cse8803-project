@@ -21,6 +21,27 @@ object ETL {
     mergeFeatureRDDs(chartEvents, gcsEvents, emptyTimeSeries)
   }
 
+  def grabFeatures(chartEvents: RDD[ChartEvent], gcsEvents: RDD[gcsEvent],
+                    inOut: RDD[InOut], septicLables: RDD[SepticLabel],
+                    allItemIds: RDD[Int], Double percentSample): RDD[(Long, MapKeyValue)] = {
+
+    //same as grabFeatures, except it subsamples the patients by percentSample
+    //have to guarantee some of the patients are septic
+    val septicPatients: RDD[Long] = septicLabels.map(_.patientId).distinct.sample(false, 0.2)
+    val septicList: List[Long] = septicPatients.collect
+    //find size
+    val numSeptic = septicList.size
+    val nsPatients: RDD[Long] = inOut.map(_.patientId).filter(x => !septicList.contains(x))
+    val numNonSeptic = nsPatients.count
+    val percentNS: Double = (numNonSeptic * 0.2 - numSeptic) / numNonSeptic.toDouble
+    val sampledNsPatients = nsPatients.sample(false, percentNS)
+    val patients = sc.union(septicPatients, sampledNsPatients).collect
+    val sampledChartEvents = chartEvents.filter( x => patients.contains(x))
+    val sampledGcsEvents = gcsEvents.filter( x => patients.contains(x))
+    val sampledInOut = inOut.filter(x => patients.contains(x))
+    val sampledSepticLabels = septicLabels.filter(x => patients.contains(x))
+    grabFeatures(sampledChartEvents, sampledGcsEvents, sampledInOut, sampledSepticLabels, allItemIds)
+  }
   def mergeFeatureRDDs(chartEvents: RDD[ChartEvent], gcsEvents: RDD[gcsEvent], emptyTimeSeries: RDD[((Long, Timestamp), Double)]):
   RDD[(Long, MapKeyValue)] = {
     val sc = chartEvents.context
