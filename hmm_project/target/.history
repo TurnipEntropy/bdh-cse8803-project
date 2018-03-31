@@ -1,0 +1,4 @@
+exit
+val opts = Map(
+val opts = Map("url" -> "jdbc:postgresql:sparkdb", "dbtable" -> "projects")
+exit

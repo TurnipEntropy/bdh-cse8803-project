@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="HydraSettings">
+    <option name="hydraStorePath" value="I:\EnTur\Documents\Big_Data_Health\project\hmm_project\.hydra\idea" />
+    <option name="noOfCores" value="4" />
+    <option name="projectRoot" value="I:\EnTur\Documents\Big_Data_Health\project\hmm_project" />
+    <option name="sourcePartitioner" value="auto" />
+  </component>
+</project>
