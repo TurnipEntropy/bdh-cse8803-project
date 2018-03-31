@@ -28,5 +28,3 @@ case class MedicationProperty(medicine: String) extends VertexProperty
 abstract class EdgeProperty
 
 case class SampleEdgeProperty(name: String = "Sample") extends EdgeProperty
-
-

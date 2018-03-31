@@ -13,7 +13,7 @@ object ETL {
   type MapKeyValue = (Timestamp, InnerTuple)
   type LargeMap = mutable.Map[Timestamp, InnerTuple]
 
-  def grab_features(chartEvents: RDD[ChartEvent], gcsEvents: RDD[gcsEvent],
+  def grabFeatures(chartEvents: RDD[ChartEvent], gcsEvents: RDD[gcsEvent],
                     inOut: RDD[InOut], septicLables: RDD[SepticLabel],
                     allItemIds: RDD[Int]): RDD[(Long, MapKeyValue)] = {
 

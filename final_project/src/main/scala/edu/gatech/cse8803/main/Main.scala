@@ -16,6 +16,8 @@ import edu.gatech.cse8803.ioutils.CSVUtils
 import edu.gatech.cse8803.model._
 
 object Main {
+  type SmallMap = mutable.Map[Long, Double]
+  type InnerTuple = (Int, SmallMap, SmallMap)
   type MapKeyValue = (Timestamp, InnerTuple)
   def main(args: Array[String]) {
     import org.apache.log4j.Logger
@@ -39,7 +41,24 @@ object Main {
                     220180, 220051, 228151, 227242, 224643, 220060, 225310,
                     220045, 220210, 223761, 220277, 220739, 223900, 223901,
                     226756, 226758, 228112, 226757, 227011, 227012, 227014, 22900))
-    val features: RDD[(Long, MapKeyValue)] =
+    val features: RDD[(Long, MapKeyValue)] = ETL.grabFeatures(chartEvents, gcsEvents,
+                                                              inOut, septicLables, allItemIds)
+    //need to transform them to be usable by the HmmModel
+    val ignore = Seq(227014, 227012, 227011, 226757, 228112, 226758, 226756)
+    // TODO: This will need to change to sort by the name associated with the itemid
+    //so that carevue and metavision vectors are comparable.
+    val preObservations = features.map({
+      case (long, (timestamp, (int, mutmap1, mutmap2))) =>
+      (long, mutmap1.toList.filter(x => !ignore.contains(x._1)).
+                     sortBy(_._1).map(_._2).toArray
+    })
+    val observationsPerPatient = preObservations.groupByKey.mapValues(_.toList)
+    val observations = observationsPerPatient.map({
+      case (k, v) => v
+    }).collect.toList
+
+
+
     sc.stop()
   }
 
