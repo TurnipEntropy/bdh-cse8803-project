@@ -23,11 +23,12 @@
 package be.ac.ulg.montefiore.run.jahmm;
 
 import java.text.NumberFormat;
-
+import com.esotericsoftware.kryo.*;
 
 /**
  * This class holds an Observation described by a vector of reals.
  */
+
 public class ObservationVector extends Observation
 implements Cloneable, CentroidFactory<ObservationVector>
 {

@@ -38,8 +38,8 @@ implements MultiRandomDistribution
 	private double[][] covarianceInv = null;
 	private double covarianceDet;
 	private final static Random randomGenerator = new Random();
-	
-	
+
+
 	/**
 	 * Creates a new pseudo-random, multivariate gaussian distribution.
 	 *
@@ -51,21 +51,21 @@ implements MultiRandomDistribution
 	 *                   <code>c</code>.
 	 */
 	public MultiGaussianDistribution(double[] mean, double[][] covariance)
-	{	
+	{
 		if (!SimpleMatrix.isSquare(covariance))
 			throw new IllegalArgumentException("Covariance must be a square " +
 			"matrix");
-		
+
 		dimension = SimpleMatrix.nbRows(covariance);
 		if (mean.length != dimension)
 			throw new IllegalArgumentException("mean and covariance " +
 			"dimensions don't match");
-		
+
 		this.mean = SimpleMatrix.vector(mean);
 		this.covariance = SimpleMatrix.matrix(covariance);
 	}
-	
-	
+
+
 	/**
 	 * Creates a new pseudo-random, multivariate gaussian distribution with
 	 * zero mean and identity covariance.
@@ -76,19 +76,19 @@ implements MultiRandomDistribution
 	{
 		if (dimension <= 0)
 			throw new IllegalArgumentException();
-		
+
 		this.dimension = dimension;
-		mean = SimpleMatrix.vector(dimension);
+		mean = SimpleMatrix.randomVector(dimension);
 		covariance = SimpleMatrix.matrixIdentity(dimension);
 	}
-	
-	
+
+
 	public int dimension()
 	{
 		return dimension;
 	}
-	
-	
+
+
 	/**
 	 * Returns (a copy of) this distribution's mean vector.
 	 *
@@ -98,8 +98,8 @@ implements MultiRandomDistribution
 	{
 		return (double[]) mean.clone();
 	}
-	
-	
+
+
 	/**
 	 * Returns (a copy of) this distribution's covariance matrix.
 	 *
@@ -109,28 +109,28 @@ implements MultiRandomDistribution
 	{
 		return SimpleMatrix.matrix(covariance);
 	}
-	
-	
+
+
 	private double[][] covarianceL()
 	{
 		if (covarianceL == null) {
 			covarianceL = SimpleMatrix.decomposeCholesky(covariance);
 			covarianceDet = SimpleMatrix.determinantCholesky(covarianceL);
 		}
-		
+
 		return covarianceL;
 	}
-	
-	
+
+
 	private double[][] covarianceInv()
 	{
 		if (covarianceInv == null)
 			covarianceInv = SimpleMatrix.inverseCholesky(covarianceL());
-		
+
 		return covarianceInv;
 	}
-	
-	
+
+
 	/**
 	 * Returns the covariance matrix determinant.
 	 *
@@ -139,11 +139,11 @@ implements MultiRandomDistribution
 	public double covarianceDet()
 	{
 		covarianceL();
-		
+
 		return covarianceDet;
 	}
-	
-	
+
+
 	/**
 	 * Generates a pseudo-random vector according to this distribution.
 	 * The vectors are generated using the Cholesky decomposition of the
@@ -154,31 +154,31 @@ implements MultiRandomDistribution
 	public double[] generate()
 	{
 		double[] d = SimpleMatrix.vector(dimension);
-		
+
 		for (int i = 0; i < dimension; i++)
 			d[i] = randomGenerator.nextGaussian();
-		
+
 		return SimpleMatrix.plus(SimpleMatrix.times(covarianceL(), d), mean);
 	}
-	
-	
+
+
 	public double probability(double[] v)
 	{
 		if (v.length != dimension)
 			throw new IllegalArgumentException("Argument array size is not " +
 					"compatible with this distribution");
-		
+
 		double[][] vmm = SimpleMatrix.matrix(SimpleMatrix.minus(v, mean));
-		
+
 		double expArg =
 			(SimpleMatrix.times(SimpleMatrix.transpose(vmm),
 					SimpleMatrix.times(covarianceInv(), vmm))[0][0]) * -.5;
-		
-		return Math.exp(expArg) / 
-		(Math.pow(2. * Math.PI, ((double) dimension) / 2.) * 
-				Math.pow(covarianceDet(), .5)); 
+
+		return Math.exp(expArg) /
+		(Math.pow(2. * Math.PI, ((double) dimension) / 2.) *
+				Math.pow(covarianceDet(), .5));
 	}
-	
-	
+
+
 	private static final long serialVersionUID = -2438571303843585271L;
 }

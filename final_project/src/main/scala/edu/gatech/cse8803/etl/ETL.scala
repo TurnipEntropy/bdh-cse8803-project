@@ -42,12 +42,12 @@ object ETL {
     val sampledNsPatients: RDD[(Long, Int)] = nsPatients.sample(false, percentNS, 8803).map(x => (x, 0))
     val patientsRdd = sc.union(septicPatients, sampledNsPatients)
     val patients = patientsRdd.map(_._1).collect.toList
-    val sampledChartEvents = chartEvents.filter( x => patients.contains(x.patientId))
-    val sampledGcsEvents = gcsEvents.filter( x => patients.contains(x.patientId))
-    val sampledInOut = inOut.filter(x => patients.contains(x.patientId))
-    val sampledSepticLabels = septicLabels.filter(x => patients.contains(x.patientId))
-    val file = "file:///home/bdh/project/sampled_subject_ids"
-    patientsRdd.saveAsTextFile(file)
+    val sampledChartEvents = chartEvents.filter( x => patients.contains(x.patientId)).cache()
+    val sampledGcsEvents = gcsEvents.filter( x => patients.contains(x.patientId)).cache()
+    val sampledInOut = inOut.filter(x => patients.contains(x.patientId)).cache()
+    val sampledSepticLabels = septicLabels.filter(x => patients.contains(x.patientId)).cache()
+    //val file = "file:///home/bdh/project/sampled_subject_ids"
+    //patientsRdd.saveAsTextFile(file)
     grabFeatures(sampledChartEvents, sampledGcsEvents, sampledInOut, sampledSepticLabels, allItemIds)
   }
   def mergeFeatureRDDs(chartEvents: RDD[ChartEvent], gcsEvents: RDD[GCSEvent],
@@ -72,16 +72,19 @@ object ETL {
     val linkedMapEvents = emptyTimeSeries.join(keyedMapEvents)
     val splitMapEvents = linkedMapEvents.map({
       case (k, v) => (k._1, (k._2, (v._1._1, v._1._2, v._2)))
-    })
+    }).cache()
+
     val createMapCombiner = (v: MapKeyValue) => {
       var map: LargeMap = mutable.Map()
       map(v._1) = (v._2._1, v._2._2, v._2._3)
       map
     }: LargeMap
+
     val mapCombiner = (acc: LargeMap, v: MapKeyValue) => {
       acc(v._1) = (v._2._1, v._2._2, v._2._3)
       acc
     }: LargeMap
+
     val mapBackwardMerge = (acc1: LargeMap, acc2: LargeMap) => {
       val combined: LargeMap = mutable.Map()
       val minKeyAcc1: Timestamp = acc1.keysIterator.min
@@ -188,11 +191,11 @@ object ETL {
       case (timeMap) => for ((time, value) <- timeMap) yield (time, value)
     })
 
-    combinedMapEvents.combineByKey(
+    combinedMapEvents.cache()/*.combineByKey(
       createMapCombiner, mapCombiner, mapBackwardMerge
     ).flatMapValues({
       case (timeMap) => for ((time, value) <- timeMap) yield (time, value)
-    })
+    }).cache()*/
   }
 
   def createEmptyTimeSeries(inOut: RDD[InOut], allItemIds: RDD[Long]): RDD[((Long, Timestamp), (Int, mutable.Map[Long, Double]))] = {

@@ -18,6 +18,7 @@ import edu.gatech.cse8803.etl.ETL
 import scala.collection.mutable
 import scala.collection.JavaConverters._
 import be.ac.ulg.montefiore.run.jahmm._
+import be.ac.ulg.montefiore.run.jahmm.learn._
 import serialize.MyRegistrator
 
 object Main {
@@ -47,11 +48,43 @@ object Main {
                     220045, 220210, 223761, 220277, 220739, 223900, 223901,
                     226756, 226758, 228112, 226757, 227011, 227012, 227014, 22900))
     val features: RDD[(Long, MapKeyValue)] = ETL.grabFeatures(chartEvents, gcsEvents,
-                                                              inOut, septicLabels, allItemIds, 0.2)
+                                                              inOut, septicLabels, allItemIds, 0.2).cache()
+    features.take(1)
     //need to transform them to be usable by the HmmModel
-    val ignore = Seq(227014, 227012, 227011, 226757, 228112, 226758, 226756)
+    val ignore = Seq(227014, 227012, 227011, 226757, 228112, 226758, 226756, 220179, 220050,228152, 227243, 224167, 220059,
+                     220180, 220051, 228151, 227242, 224643, 220060, 220739, 223900, 223901)
     // TODO: This will need to change to sort by the name associated with the itemid
     //so that carevue and metavision vectors are comparable.
+    val preObservations: RDD[(Long, Array[Double])] = features.map({
+      case (long, (timestamp, (int, mutmap1, mutmap2))) =>
+        (long, mutmap1.toList.filter(x => !ignore.contains(x._1)).
+        sortBy(_._1).map(_._2).toArray)
+    }).cache()
+    val observationsPerPatient = preObservations.groupByKey.mapValues(_.toList.asJava)
+    val observations = observationsPerPatient.map({
+      case (k, v) => v
+    }).collect.toList.asJava
+
+    var i = 0
+    val obsList = new java.util.ArrayList[java.util.ArrayList[ObservationVector]] ()
+    while (i < observations.size()) {
+      var j = 0
+      obsList.add(new java.util.ArrayList[ObservationVector])
+      while (j < observations.get(i).size()) {
+        if (observations.get(i).get(j).length == 9) {
+          obsList.get(i).add(new ObservationVector(observations.get(i).get(j)))
+        }
+        j += 1
+      }
+      i += 1
+    }
+
+    val kml: KMeansLearner[ObservationVector] = new KMeansLearner[ObservationVector] (
+      2, new OpdfMultiGaussianFactory(9), obsList
+    )
+
+    //Will need to get this working after serialization; workaround is above
+    /*
     val preObservations: RDD[(Long, ObservationVector)] = features.map({
       case (long, (timestamp, (int, mutmap1, mutmap2))) =>
       (long, new ObservationVector(mutmap1.toList.filter(x => !ignore.contains(x._1)).
@@ -60,7 +93,7 @@ object Main {
     val observationsPerPatient = preObservations.groupByKey.mapValues(_.toList.asJava)
     val observations = observationsPerPatient.map({
       case (k, v) => v
-    }).collect.toList.asJava
+    }).collect.toList.asJava*/
     //now have a List<List<ObservationVector>>, can just run HMM I think
 
 
@@ -88,6 +121,8 @@ object Main {
                           r(3).toString.toDouble
                           )
       ).cache()
+      chartEvents.take(1)
+
     val gcsEvents: RDD[GCSEvent] = sqlContext.sql(
       """
         |SELECT subject_id, charttime, gcs
@@ -95,6 +130,7 @@ object Main {
       """.stripMargin).
       map(r => GCSEvent(r(0).toString.toLong, new Timestamp(dateFormat.parse(r(1).toString).getTime),
                         r(2).toString.toInt)).cache()
+    gcsEvents.take(1)
 
     val inOut: RDD[InOut] = sqlContext.sql(
       """
@@ -103,6 +139,7 @@ object Main {
       """.stripMargin
     ).map( r => InOut(r(0).toString.toLong, new Timestamp(dateFormat.parse(r(1).toString).getTime),
                       new Timestamp(dateFormat.parse(r(2).toString).getTime))).cache()
+    inOut.take(1)
 
     val septicLabels: RDD[SepticLabel] = sqlContext.sql(
       """
@@ -110,6 +147,8 @@ object Main {
         |FROM septic_id_timestamp
       """.stripMargin
     ).map( r => SepticLabel(r(0).toString.toLong, new Timestamp(dateFormat.parse(r(1).toString).getTime))).cache()
+    septicLabels.take(1)
+
     (chartEvents, gcsEvents, inOut, septicLabels)
   }
 
