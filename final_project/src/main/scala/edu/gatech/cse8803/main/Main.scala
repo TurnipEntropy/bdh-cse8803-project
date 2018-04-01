@@ -14,6 +14,8 @@ import org.apache.spark
 import org.postgresql._
 import edu.gatech.cse8803.ioutils.CSVUtils
 import edu.gatech.cse8803.model._
+import edu.gatech.cse8803.etl.ETL
+import scala.collection.mutable
 
 object Main {
   type SmallMap = mutable.Map[Long, Double]
@@ -37,20 +39,20 @@ object Main {
       val rs: ResultSet = prep.executeQuery()
     }*/
     val (chartEvents, gcsEvents, inOut, septicLabels) = loadLocalRddRawData(sqlContext)
-    val allItemIds: RDD[Int] = sc.parallelize(Seq(220179, 220050, 228152, 227243, 225167, 220059, 225309,
+    val allItemIds: RDD[Long] = sc.parallelize(Seq(220179, 220050, 228152, 227243, 225167, 220059, 225309,
                     220180, 220051, 228151, 227242, 224643, 220060, 225310,
                     220045, 220210, 223761, 220277, 220739, 223900, 223901,
                     226756, 226758, 228112, 226757, 227011, 227012, 227014, 22900))
     val features: RDD[(Long, MapKeyValue)] = ETL.grabFeatures(chartEvents, gcsEvents,
-                                                              inOut, septicLables, allItemIds)
+                                                              inOut, septicLabels, allItemIds, 0.2)
     //need to transform them to be usable by the HmmModel
     val ignore = Seq(227014, 227012, 227011, 226757, 228112, 226758, 226756)
     // TODO: This will need to change to sort by the name associated with the itemid
     //so that carevue and metavision vectors are comparable.
-    val preObservations = features.map({
+    val preObservations: RDD[(Long, Array[Double])] = features.map({
       case (long, (timestamp, (int, mutmap1, mutmap2))) =>
       (long, mutmap1.toList.filter(x => !ignore.contains(x._1)).
-                     sortBy(_._1).map(_._2).toArray
+                     sortBy(_._1).map(_._2).toArray)
     })
     val observationsPerPatient = preObservations.groupByKey.mapValues(_.toList)
     val observations = observationsPerPatient.map({

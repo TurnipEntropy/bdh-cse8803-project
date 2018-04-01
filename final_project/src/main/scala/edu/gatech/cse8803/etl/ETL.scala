@@ -1,48 +1,54 @@
-package edu.gatech.cse8803.ETL
+package edu.gatech.cse8803.etl
 
 import edu.gatech.cse8803.model._
 import org.apache.spark.rdd.RDD
-import java.sql.Timestamp
-import scala.collections.mutable.ListBuffer
-import com.cloudera.sparkts._
+import scala.collection.mutable.{ListBuffer}
 import scala.collection.mutable
+import java.sql.Timestamp
+import org.apache.commons.io.FileUtils
+import java.io.File
 
 object ETL {
-  type SmallMap = mutable.Map[Long, Double]
+  type SmallMap = scala.collection.mutable.Map[Long, Double]
   type InnerTuple = (Int, SmallMap, SmallMap)
   type MapKeyValue = (Timestamp, InnerTuple)
-  type LargeMap = mutable.Map[Timestamp, InnerTuple]
+  type LargeMap = scala.collection.mutable.Map[Timestamp, InnerTuple]
 
-  def grabFeatures(chartEvents: RDD[ChartEvent], gcsEvents: RDD[gcsEvent],
-                    inOut: RDD[InOut], septicLables: RDD[SepticLabel],
-                    allItemIds: RDD[Int]): RDD[(Long, MapKeyValue)] = {
+  def grabFeatures(chartEvents: RDD[ChartEvent], gcsEvents: RDD[GCSEvent],
+                    inOut: RDD[InOut], septicLabels: RDD[SepticLabel],
+                    allItemIds: RDD[Long]): RDD[(Long, MapKeyValue)] = {
 
     val emptyTimeSeries = createEmptyTimeSeries(inOut, allItemIds)
     mergeFeatureRDDs(chartEvents, gcsEvents, emptyTimeSeries)
   }
 
-  def grabFeatures(chartEvents: RDD[ChartEvent], gcsEvents: RDD[gcsEvent],
-                    inOut: RDD[InOut], septicLables: RDD[SepticLabel],
-                    allItemIds: RDD[Int], Double percentSample): RDD[(Long, MapKeyValue)] = {
+  def grabFeatures(chartEvents: RDD[ChartEvent], gcsEvents: RDD[GCSEvent],
+                    inOut: RDD[InOut], septicLabels: RDD[SepticLabel],
+                    allItemIds: RDD[Long], percentSample: Double): RDD[(Long, MapKeyValue)] = {
 
     //same as grabFeatures, except it subsamples the patients by percentSample
     //have to guarantee some of the patients are septic
-    val septicPatients: RDD[Long] = septicLabels.map(_.patientId).distinct.sample(false, 0.2)
-    val septicList: List[Long] = septicPatients.collect
+    val sc = chartEvents.context
+    val septicPatients: RDD[Long] = septicLabels.map(_.patientId).distinct.sample(false, percentSample, 8803)
+    val septicList: List[Long] = septicPatients.collect.toList
     //find size
     val numSeptic = septicList.size
     val nsPatients: RDD[Long] = inOut.map(_.patientId).filter(x => !septicList.contains(x))
     val numNonSeptic = nsPatients.count
-    val percentNS: Double = (numNonSeptic * 0.2 - numSeptic) / numNonSeptic.toDouble
-    val sampledNsPatients = nsPatients.sample(false, percentNS)
-    val patients = sc.union(septicPatients, sampledNsPatients).collect
+    val percentNS: Double = (numNonSeptic * percentSample - numSeptic) / numNonSeptic.toDouble
+    val sampledNsPatients = nsPatients.sample(false, percentNS, 8803)
+    val patientsRdd = sc.union(septicPatients, sampledNsPatients)
+    val patients = patientsRdd.collect.toList
     val sampledChartEvents = chartEvents.filter( x => patients.contains(x))
     val sampledGcsEvents = gcsEvents.filter( x => patients.contains(x))
     val sampledInOut = inOut.filter(x => patients.contains(x))
     val sampledSepticLabels = septicLabels.filter(x => patients.contains(x))
+    val file = "file:///home/bdh/project/sampled_subject_ids.csv"
+    patientsRdd.saveAsTextFile(file)
     grabFeatures(sampledChartEvents, sampledGcsEvents, sampledInOut, sampledSepticLabels, allItemIds)
   }
-  def mergeFeatureRDDs(chartEvents: RDD[ChartEvent], gcsEvents: RDD[gcsEvent], emptyTimeSeries: RDD[((Long, Timestamp), Double)]):
+  def mergeFeatureRDDs(chartEvents: RDD[ChartEvent], gcsEvents: RDD[GCSEvent],
+                       emptyTimeSeries: RDD[((Long, Timestamp), (Int, mutable.Map[Long, Double]))]):
   RDD[(Long, MapKeyValue)] = {
     val sc = chartEvents.context
     //first turn the gcsEvent into something that can be unioned with chartEvents
@@ -55,24 +61,24 @@ object ETL {
       evt => ((evt.patientId, evt.datetime), (evt.itemid, evt.value))
     )
     val keyedMapEvents = keyedEvents.combineByKey(
-      (v) => SmallMap(v._1 -> v._2),
+      (v) => mutable.Map[Long, Double](v._1 -> v._2),
       (acc: SmallMap, v) => acc += (v._1 -> v._2),
       (acc1: SmallMap, acc2: SmallMap) => acc1 ++ acc2
     )
 
     val linkedMapEvents = emptyTimeSeries.join(keyedMapEvents)
     val splitMapEvents = linkedMapEvents.map({
-      case (k, v) => (k._1, (k._2, v))
+      case (k, v) => (k._1, (k._2, (v._1._1, v._1._2, v._2)))
     })
     val createMapCombiner = (v: MapKeyValue) => {
       var map: LargeMap = mutable.Map()
       map(v._1) = (v._2._1, v._2._2, v._2._3)
       map
-    }
+    }: LargeMap
     val mapCombiner = (acc: LargeMap, v: MapKeyValue) => {
       acc(v._1) = (v._2._1, v._2._2, v._2._3)
       acc
-    }
+    }: LargeMap
     val mapBackwardMerge = (acc1: LargeMap, acc2: LargeMap) => {
       val combined: LargeMap = mutable.Map()
       val minKeyAcc1: Timestamp = acc1.keysIterator.min
@@ -121,7 +127,8 @@ object ETL {
         endTime = midTime
      }
       combined
-    }
+    }: LargeMap
+
     val mapForwardMerge = (acc1: LargeMap, acc2: LargeMap) => {
       val combined: LargeMap = mutable.Map()
       val minKeyAcc1: Timestamp = acc1.keysIterator.min
@@ -170,7 +177,7 @@ object ETL {
         startTime = midTime
      }
       combined
-    }
+    }: LargeMap
 
     val combinedMapEvents = splitMapEvents.combineByKey(
       createMapCombiner,mapCombiner,mapForwardMerge
@@ -185,7 +192,7 @@ object ETL {
     })
   }
 
-  def createEmptyTimeSeries(inOut: RDD[InOut], allItemIds: RDD[Int]): RDD[((Long, Timestamp), mutable.Map[Long, Double])] = {
+  def createEmptyTimeSeries(inOut: RDD[InOut], allItemIds: RDD[Long]): RDD[((Long, Timestamp), (Int, mutable.Map[Long, Double]))] = {
     val intermediate = inOut.map({
       case io => (io.patientId, createTimeList(io.intime, io.outtime))
     })
