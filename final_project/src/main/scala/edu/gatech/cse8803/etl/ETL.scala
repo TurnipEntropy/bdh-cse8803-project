@@ -29,21 +29,24 @@ object ETL {
     //same as grabFeatures, except it subsamples the patients by percentSample
     //have to guarantee some of the patients are septic
     val sc = chartEvents.context
-    val septicPatients: RDD[Long] = septicLabels.map(_.patientId).distinct.sample(false, percentSample, 8803)
-    val septicList: List[Long] = septicPatients.collect.toList
+    val septicPatients: RDD[(Long, Int)] = septicLabels.map(_.patientId).
+                                                distinct.
+                                                sample(false, percentSample, 8803).
+                                                map( x => (x, 1))
+    val septicList: List[Long] = septicLabels.map(_.patientId).distinct.collect.toList
     //find size
-    val numSeptic = septicList.size
+    val numSeptic = septicPatients.count
     val nsPatients: RDD[Long] = inOut.map(_.patientId).filter(x => !septicList.contains(x))
     val numNonSeptic = nsPatients.count
     val percentNS: Double = (numNonSeptic * percentSample - numSeptic) / numNonSeptic.toDouble
-    val sampledNsPatients = nsPatients.sample(false, percentNS, 8803)
+    val sampledNsPatients: RDD[(Long, Int)] = nsPatients.sample(false, percentNS, 8803).map(x => (x, 0))
     val patientsRdd = sc.union(septicPatients, sampledNsPatients)
-    val patients = patientsRdd.collect.toList
+    val patients = patientsRdd.map(_._1).collect.toList
     val sampledChartEvents = chartEvents.filter( x => patients.contains(x))
     val sampledGcsEvents = gcsEvents.filter( x => patients.contains(x))
     val sampledInOut = inOut.filter(x => patients.contains(x))
     val sampledSepticLabels = septicLabels.filter(x => patients.contains(x))
-    val file = "file:///home/bdh/project/sampled_subject_ids.csv"
+    val file = "file:///home/bdh/project/sampled_subject_ids"
     patientsRdd.saveAsTextFile(file)
     grabFeatures(sampledChartEvents, sampledGcsEvents, sampledInOut, sampledSepticLabels, allItemIds)
   }
