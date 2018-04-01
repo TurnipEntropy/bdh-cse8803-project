@@ -42,10 +42,10 @@ object ETL {
     val sampledNsPatients: RDD[(Long, Int)] = nsPatients.sample(false, percentNS, 8803).map(x => (x, 0))
     val patientsRdd = sc.union(septicPatients, sampledNsPatients)
     val patients = patientsRdd.map(_._1).collect.toList
-    val sampledChartEvents = chartEvents.filter( x => patients.contains(x))
-    val sampledGcsEvents = gcsEvents.filter( x => patients.contains(x))
-    val sampledInOut = inOut.filter(x => patients.contains(x))
-    val sampledSepticLabels = septicLabels.filter(x => patients.contains(x))
+    val sampledChartEvents = chartEvents.filter( x => patients.contains(x.patientId))
+    val sampledGcsEvents = gcsEvents.filter( x => patients.contains(x.patientId))
+    val sampledInOut = inOut.filter(x => patients.contains(x.patientId))
+    val sampledSepticLabels = septicLabels.filter(x => patients.contains(x.patientId))
     val file = "file:///home/bdh/project/sampled_subject_ids"
     patientsRdd.saveAsTextFile(file)
     grabFeatures(sampledChartEvents, sampledGcsEvents, sampledInOut, sampledSepticLabels, allItemIds)

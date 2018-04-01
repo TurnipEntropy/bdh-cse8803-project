@@ -16,6 +16,9 @@ import edu.gatech.cse8803.ioutils.CSVUtils
 import edu.gatech.cse8803.model._
 import edu.gatech.cse8803.etl.ETL
 import scala.collection.mutable
+import scala.collection.JavaConverters._
+import be.ac.ulg.montefiore.run.jahmm._
+import serialize.MyRegistrator
 
 object Main {
   type SmallMap = mutable.Map[Long, Double]
@@ -28,7 +31,7 @@ object Main {
     Logger.getLogger("org").setLevel(Level.WARN)
     Logger.getLogger("akka").setLevel(Level.WARN)
 
-    val sc = createContext
+    val sc = Main.createContext
     val sqlContext = new SQLContext(sc)
     /*val dbc = "jdbc:postgresql://hostmachine:9530/postgres?user=postgres&password=Password123"
     classOf[org.postgresql.Driver]
@@ -38,7 +41,7 @@ object Main {
       val prep = conn.prepareStatement("SELECT * FROM admissions WHERE subject_id = 61")
       val rs: ResultSet = prep.executeQuery()
     }*/
-    val (chartEvents, gcsEvents, inOut, septicLabels) = loadLocalRddRawData(sqlContext)
+    val (chartEvents, gcsEvents, inOut, septicLabels) = Main.loadLocalRddRawData(sqlContext)
     val allItemIds: RDD[Long] = sc.parallelize(Seq(220179, 220050, 228152, 227243, 225167, 220059, 225309,
                     220180, 220051, 228151, 227242, 224643, 220060, 225310,
                     220045, 220210, 223761, 220277, 220739, 223900, 223901,
@@ -49,16 +52,16 @@ object Main {
     val ignore = Seq(227014, 227012, 227011, 226757, 228112, 226758, 226756)
     // TODO: This will need to change to sort by the name associated with the itemid
     //so that carevue and metavision vectors are comparable.
-    val preObservations: RDD[(Long, Array[Double])] = features.map({
+    val preObservations: RDD[(Long, ObservationVector)] = features.map({
       case (long, (timestamp, (int, mutmap1, mutmap2))) =>
-      (long, mutmap1.toList.filter(x => !ignore.contains(x._1)).
-                     sortBy(_._1).map(_._2).toArray)
+      (long, new ObservationVector(mutmap1.toList.filter(x => !ignore.contains(x._1)).
+                     sortBy(_._1).map(_._2).toArray))
     })
-    val observationsPerPatient = preObservations.groupByKey.mapValues(_.toList)
+    val observationsPerPatient = preObservations.groupByKey.mapValues(_.toList.asJava)
     val observations = observationsPerPatient.map({
       case (k, v) => v
-    }).collect.toList
-
+    }).collect.toList.asJava
+    //now have a List<List<ObservationVector>>, can just run HMM I think
 
 
     sc.stop()
@@ -84,14 +87,14 @@ object Main {
                           r(2).toString.toLong,
                           r(3).toString.toDouble
                           )
-      )//.cache()
+      ).cache()
     val gcsEvents: RDD[GCSEvent] = sqlContext.sql(
       """
         |SELECT subject_id, charttime, gcs
         |FROM gcs_data
       """.stripMargin).
       map(r => GCSEvent(r(0).toString.toLong, new Timestamp(dateFormat.parse(r(1).toString).getTime),
-                        r(2).toString.toInt))//.cache()
+                        r(2).toString.toInt)).cache()
 
     val inOut: RDD[InOut] = sqlContext.sql(
       """
@@ -99,19 +102,20 @@ object Main {
         |FROM in_out
       """.stripMargin
     ).map( r => InOut(r(0).toString.toLong, new Timestamp(dateFormat.parse(r(1).toString).getTime),
-                      new Timestamp(dateFormat.parse(r(2).toString).getTime)))//.cache()
+                      new Timestamp(dateFormat.parse(r(2).toString).getTime))).cache()
 
     val septicLabels: RDD[SepticLabel] = sqlContext.sql(
       """
         |SELECT *
         |FROM septic_id_timestamp
       """.stripMargin
-    ).map( r => SepticLabel(r(0).toString.toLong, new Timestamp(dateFormat.parse(r(1).toString).getTime)))//.cache()
+    ).map( r => SepticLabel(r(0).toString.toLong, new Timestamp(dateFormat.parse(r(1).toString).getTime))).cache()
     (chartEvents, gcsEvents, inOut, septicLabels)
   }
 
   def createContext(appName: String, masterUrl: String): SparkContext = {
     val conf = new SparkConf().setAppName(appName).setMaster(masterUrl)
+    conf.set("spark.kryo.registrator", "serialize.MyRegistrator")
     new SparkContext(conf)
   }
 
