@@ -10,7 +10,7 @@ case class ChartEvent(patientId: Long, datetime: Timestamp, itemid: Long, value:
 
 case class GCSEvent(patientId: Long, datetime: Timestamp, gcsScore: Int)
 
-case class InOut(patientId: Long, intime: Timestamp, outtime: Timestamp)
+case class InOut(patientId: Long, icustayId: Long, intime: Timestamp, outtime: Timestamp)
 
 case class SepticLabel(patientId: Long, datetime: Timestamp)
 

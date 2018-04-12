@@ -155,11 +155,12 @@ object Main {
     patientData.take(1)
     val inOut: RDD[InOut] = sqlContext.sql(
         """
-          |SELECT subject_id, intime, outtime
+          |SELECT subject_id, icustay_id, intime, outtime
           |FROM in_out
         """.stripMargin
-    ).map( r => InOut(r(0).toString.toLong, checkDate(r(0).toString, r(1).toString),
-                        checkDate(r(0).toString, r(2).toString))).cache()
+    ).map( r => InOut(r(0).toString.toLong, r(1).toString.toLong,
+                        checkDate(r(0).toString, r(2).toString),
+                        checkDate(r(0).toString, r(3).toString))).cache()
     inOut.take(1)
 
     val septicLabels: RDD[SepticLabel] = sqlContext.sql(

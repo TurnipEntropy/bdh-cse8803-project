@@ -14,16 +14,15 @@ object ETL {
   type MapKeyValue = (Timestamp, InnerTuple)
   type LargeMap = scala.collection.mutable.Map[Timestamp, InnerTuple]
 
-  def grabFeatures(chartEvents: RDD[ChartEvent], gcsEvents: RDD[GCSEvent],
-                    inOut: RDD[InOut], septicLabels: RDD[SepticLabel],
-                    allItemIds: RDD[Long]): RDD[(Long, MapKeyValue)] = {
+  def grabFeatures(patientData: RDD[PatientData], inOut: RDD[InOut],
+                   septicLabels: RDD[SepticLabel]): RDD[(Long, MapKeyValue)] = {
 
-    val emptyTimeSeries = createEmptyTimeSeries(inOut, allItemIds)
+    val emptyTimeSeries = createEmptyTimeSeries(inOut)
     mergeFeatureRDDs(chartEvents, gcsEvents, emptyTimeSeries)
   }
 
   def grabFeatures(chartEvents: RDD[ChartEvent], gcsEvents: RDD[GCSEvent],
-                   inOut: RDD[InOut], allItemIds: RDD[Long]): RDD[(Long, MapKeyValue)] = {
+                   inOut: RDD[InOut]): RDD[(Long, MapKeyValue)] = {
 
     val emptyTimeSeries = createEmptyTimeSeries(inOut, allItemIds)
     mergeFeatureRDDs(chartEvents, gcsEvents, emptyTimeSeries)
@@ -228,10 +227,7 @@ object ETL {
     val expanded = intermediate.flatMapValues(x => x).map({
       case (k,v) => ((k, v), 0)
     })
-    val itemMap = scala.collection.mutable.Map(allItemIds.map(x => (x, 0.0)).collect: _*)
-    expanded.map({
-      case (k,v) => (k, (v, itemMap))
-    })
+    expanded
   }
 
   def createTimeList(in: Timestamp, out: Timestamp): List[Timestamp] = {
