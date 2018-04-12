@@ -15,6 +15,11 @@ case class InOut(patientId: Long, intime: Timestamp, outtime: Timestamp)
 
 case class SepticLabel(patientId: Long, datetime: Timestamp)
 
+case class PatientData(patientId: Long, icuStayId: Long, datetime: Timestamp,
+                       bpDia: Double, bpSys: Double, heartRate: Double, respRate: Double,
+                       temp: Double, spo2: Double, eyeOp: Double, verbal: Double,
+                       motor: Double, age: Int)
+
 abstract class VertexProperty
 
 case class PatientProperty(patientID: String, sex: String, dob: String, dod: String) extends VertexProperty

@@ -23,6 +23,13 @@ object ETL {
   }
 
   def grabFeatures(chartEvents: RDD[ChartEvent], gcsEvents: RDD[GCSEvent],
+                   inOut: RDD[InOut], allItemIds: RDD[Long]): RDD[(Long, MapKeyValue)] = {
+
+    val emptyTimeSeries = createEmptyTimeSeries(inOut, allItemIds)
+    mergeFeatureRDDs(chartEvents, gcsEvents, emptyTimeSeries)
+  }
+
+  def grabFeatures(chartEvents: RDD[ChartEvent], gcsEvents: RDD[GCSEvent],
                     inOut: RDD[InOut], septicLabels: RDD[SepticLabel],
                     allItemIds: RDD[Long], percentSample: Double): RDD[(Long, MapKeyValue)] = {
 
@@ -50,6 +57,21 @@ object ETL {
     //patientsRdd.saveAsTextFile(file)
     grabFeatures(sampledChartEvents, sampledGcsEvents, sampledInOut, sampledSepticLabels, allItemIds)
   }
+
+  def grabFeatures(chartEvents: RDD[ChartEvent], gcsEvents: RDD[GCSEvent],
+                   inOut: RDD[InOut], allItemIds: RDD[Long], percentSample: Double): RDD[(Long, MapKeyValue)] = {
+
+    val sc = chartEvents.context
+    val patientsRdd: RDD[(Long, Int)] = inOut.map(_.patientId).distinct.
+                                              sample(false, percentSample, 8803).
+                                              map( x => (x, 0))
+    val patients = patientsRdd.map(_._1).collect.toList
+    val sampledChartEvents = chartEvents.filter( x => patients.contains(x.patientId)).cache()
+    val sampledGcsEvents = gcsEvents.filter( x => patients.contains(x.patientId)).cache()
+    val sampledInOut = inOut.filter( x => patients.contains(x.patientId)).cache()
+    grabFeatures(sampledChartEvents, sampledGcsEvents, sampledInOut, allItemIds)
+  }
+
   def mergeFeatureRDDs(chartEvents: RDD[ChartEvent], gcsEvents: RDD[GCSEvent],
                        emptyTimeSeries: RDD[((Long, Timestamp), (Int, mutable.Map[Long, Double]))]):
   RDD[(Long, MapKeyValue)] = {

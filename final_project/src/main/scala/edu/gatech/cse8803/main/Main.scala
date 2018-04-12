@@ -42,19 +42,46 @@ object Main {
       val prep = conn.prepareStatement("SELECT * FROM admissions WHERE subject_id = 61")
       val rs: ResultSet = prep.executeQuery()
     }*/
+
+    // val (cvChartEvents, cvGcsEvents, cvInOut) = Main.loadLocalRddRawDataCareVue(sqlContext)
+    // val cvAllItemIds: RDD[Long] = sc.parallelize(Seq(211, 618, 646, 678, 442, 51, 8368, 229000))
+    // val features:RDD[(Long, MapKeyValue)] = ETL.grabFeatures(cvChartEvents, cvGcsEvents,
+    //                                                           cvInOut, cvAllItemIds, 0.2).cache()
+    // features.take(1)
+    // //SUPER HACKY, but was kind of fun...
+    // val cvPreObservations: RDD[(Long, Array[Double])] = features.map({
+    //   case(long, (timestamp, (int, mutmap1, mutmap2))) =>
+    //     (long, mutmap1.toList.sortWith({
+    //       (a,b) => if (a._1 ==  211) { true } else { if (b._1 ==  211) { false } else {
+    //         if (a._1 ==  618) { true } else {if (b._1 ==  618) { false } else {
+    //           if (a._1 ==  646) { true } else {if (b._1 ==  646) { false } else {
+    //             if (a._1 ==  678) { true } else {if (b._1 ==  678) { false } else {
+    //               if (a._1 ==  442) { true } else {if (b._1 ==  442) { false } else {
+    //                 if (a._1 ==  51) { true } else {if (b._1 ==  51) { false } else {
+    //                   b._1 - a._1 > 0
+    //                 }}
+    //               }}
+    //             }}
+    //           }}
+    //         }}
+    //       }}
+    //     }).map(_._2).toArray)
+    //   }).cache()
+    //
+    // val cvObservationsPerPatient = cvPreObservations.groupByKey
+    /*
     val (chartEvents, gcsEvents, inOut, septicLabels) = Main.loadLocalRddRawData(sqlContext)
-    val allItemIds: RDD[Long] = sc.parallelize(Seq(220179, 220050, 228152, 227243, 225167, 220059, 225309,
+    val allItemIds: RDD[Long] = sc.parallelize(Seq(220179, 220050, 228152, 227243, 224167, 220059, 225309,
                     220180, 220051, 228151, 227242, 224643, 220060, 225310,
                     220045, 220210, 223761, 220277, 220739, 223900, 223901,
-                    226756, 226758, 228112, 226757, 227011, 227012, 227014, 22900))
+                    226756, 226758, 228112, 226757, 227011, 227012, 227014, 229000))
     val features: RDD[(Long, MapKeyValue)] = ETL.grabFeatures(chartEvents, gcsEvents,
                                                               inOut, septicLabels, allItemIds, 0.2).cache()
     features.take(1)
     //need to transform them to be usable by the HmmModel
     val ignore = Seq(227014, 227012, 227011, 226757, 228112, 226758, 226756, 220179, 220050,228152, 227243, 224167, 220059,
                      220180, 220051, 228151, 227242, 224643, 220060, 220739, 223900, 223901)
-    // TODO: This will need to change to sort by the name associated with the itemid
-    //so that carevue and metavision vectors are comparable.
+    // TODO: Was going to make alphabetical, instead just doing a map for carevue
     val preObservations: RDD[(Long, Array[Double])] = features.map({
       case (long, (timestamp, (int, mutmap1, mutmap2))) =>
         (long, mutmap1.toList.filter(x => !ignore.contains(x._1)).
@@ -95,9 +122,91 @@ object Main {
       case (k, v) => v
     }).collect.toList.asJava*/
     //now have a List<List<ObservationVector>>, can just run HMM I think
-
+   */
 
     sc.stop()
+  }
+
+  def loadLocalRddMetavisionData(sqlContext: SQLContext): (RDD[PatientData], RDD[InOut], RDD[SepticLabel]) = {
+    val dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+    val homeString = "file:///home/bdh/project/"
+    List(
+      homeString + "metavision_all_features.csv",
+      homeString + "in_out.csv",
+      homeString + "septic_id_timestamp"
+    ).foreach(CSVUtils.loadCSVAsTable(sqlContext, _))
+
+    val patientData: RDD[PatientData] = sqlContext.sql(
+      """
+         |SELECT subject_id, icustay_id, charttime, bp_dia, bp_sys, heart_rate,
+         |       resp_rate, temp_f, spo2, eye_opening, verbal, motor, age
+         |FROM metavision_all_features
+      """.stripMargin).
+      map(row => PatientData(r(0).toString.toLong, r(1).toString.toLong,
+                             new Timestamp(dateFormat.parse(r(2).toString).getTime),
+                             r(3).toString.toDouble, r(4).toString.toDouble,
+                             r(5).toString.toDouble, r(6).toString.toDouble,
+                             r(7).toString.toDouble, r(8).toString.toDouble,
+                             r(9).toString.toDouble, r(10).toString.toDouble,
+                             r(11).toString.toDouble, r(12).toString.toInt)
+      ).cache
+      patientData.take(1)
+    )
+  }
+  def loadLocalRddRawDataCareVue(sqlContext: SQLContext): (RDD[ChartEvent], RDD[GCSEvent], RDD[InOut]) = {
+    val dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+    val homeString = "file:///home/bdh/project/"
+    List(
+      homeString + "carevue_gcs_data.csv",
+      homeString + "carevue_in_out.csv",
+      homeString + "carevue_data.csv"
+    ).foreach(CSVUtils.loadCSVAsTable(sqlContext, _))
+
+    val chartEvents: RDD[ChartEvent] = sqlContext.sql(
+      """
+        |SELECT subject_id, charttime, itemid, avg_value
+        |FROM carevue_data
+      """.stripMargin).
+      map(r => ChartEvent(r(0).toString.toLong,
+                          new Timestamp(dateFormat.parse(r(1).toString).getTime),
+                          r(2).toString.toLong,
+                          r(3).toString.toDouble
+                          )
+      ).cache()
+      chartEvents.take(1)
+
+    val gcsEvents: RDD[GCSEvent] = sqlContext.sql(
+      """
+        |SELECT subject_id, charttime, gcs
+        |FROM carevue_gcs_data
+      """.stripMargin).
+      map(r => GCSEvent(r(0).toString.toLong, new Timestamp(dateFormat.parse(r(1).toString).getTime),
+                        r(2).toString.toInt)).cache()
+    gcsEvents.take(1)
+
+    val inOut: RDD[InOut] = sqlContext.sql(
+      """
+        |SELECT subject_id, intime, outtime
+        |FROM carevue_in_out
+      """.stripMargin
+    ).
+    map( r => (r(0), r(1), r(2))).
+    filter (r => r._3.toString.length > 0).
+    map( r => InOut(r._1.toString.toLong, new Timestamp(dateFormat.parse(r._2.toString).getTime),
+                      new Timestamp(dateFormat.parse(r._3.toString).getTime))).cache()
+    inOut.take(1)
+    val sc = chartEvents.context
+    val cePatients = chartEvents.map(_.patientId).distinct.map(x => (x, 1))
+    val gPatients = gcsEvents.map(_.patientId).distinct.map(x => (x, 1))
+    val ioPatients = inOut.map(_.patientId).distinct.map(x => (x, 1))
+    val patients = cePatients.join(gPatients).join(ioPatients).map(_._1).collect
+
+    val fchartEvents = chartEvents.filter(x => patients.contains(x.patientId)).cache()
+    val fgcsEvents = gcsEvents.filter(x => patients.contains(x.patientId)).cache()
+    val finOut = inOut.filter(x => patients.contains(x.patientId)).cache()
+
+
+    (fchartEvents, fgcsEvents, finOut)
   }
 
   def loadLocalRddRawData(sqlContext: SQLContext): (RDD[ChartEvent], RDD[GCSEvent], RDD[InOut], RDD[SepticLabel]) = {
@@ -161,4 +270,15 @@ object Main {
   def createContext(appName: String): SparkContext = createContext(appName, "local")
 
   def createContext: SparkContext = createContext("CSE 8803 Homework Three Application", "local")
+
+  def loadPythonCSV(csv: RDD[(String, String)]): RDD[((Long, Int), (Double, Double))] = {
+    val mapCSV: RDD[(Array[String], Array[String])] = csv.map({
+      case (s1, s2) => (s1.replace("(", "").replace(")", "").replace("'", "").split(","),
+                        s2.replace("[", "").replace("]", "").split(","))
+    })
+    mapCSV.map({
+      case (arr1, arr2) => ((arr1(1).trim.toLong, arr1(0).trim.toInt),
+                            (arr2(0).trim.toDouble, arr2(1).trim.toDouble))
+    })
+  }
 }

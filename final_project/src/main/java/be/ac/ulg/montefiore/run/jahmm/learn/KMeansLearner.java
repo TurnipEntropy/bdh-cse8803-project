@@ -231,7 +231,7 @@ public class KMeansLearner<O extends Observation & CentroidFactory<? super O>>
 /*
  * This class holds the matching between observations and clusters.
  */
-public class Clusters<O extends CentroidFactory<? super O>>
+class Clusters<O extends CentroidFactory<? super O>>
 {
 	public class Value
 	{
