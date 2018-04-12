@@ -205,7 +205,7 @@ object ETL {
   //   }).cache()*/
   // }
 
-  def createEmptyTimeSeries(inOut: RDD[InOut], allItemIds: RDD[Long]): RDD[((Long, Timestamp), (Int, mutable.Map[Long, Double]))] = {
+  def createEmptyTimeSeries(inOut: RDD[InOut]): RDD[((Long, Long, Timestamp), Int)] = {
     val intermediate = inOut.map({
       case io => ((io.patientId, io.icustayId), createTimeList(io.intime, io.outtime))
     })
