@@ -214,7 +214,7 @@ object Main {
     ).
     map( r => (r(0), r(1), r(2), r(3))).
     filter (r => r._3.toString.length > 0).
-    map( r => InOut(r._1.toString.toLong, r._2.toString.toLong
+    map( r => InOut(r._1.toString.toLong, r._2.toString.toLong,
                       new Timestamp(dateFormat.parse(r._3.toString).getTime),
                       new Timestamp(dateFormat.parse(r._4.toString).getTime))).cache()
     inOut.take(1)
