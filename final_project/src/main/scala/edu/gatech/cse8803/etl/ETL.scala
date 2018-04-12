@@ -21,18 +21,18 @@ object ETL {
     //mergeFeatureRDDs(patientData, emptyTimeSeries)
   }
 
-  def grabFeatures(patientData: RDD[PatientData], inOut: RDD[InOut]): Unit//RDD[(Long, MapKeyValue)] = {
+  def grabFeatures(patientData: RDD[PatientData], inOut: RDD[InOut]): Unit = {//RDD[(Long, MapKeyValue)] = {
 
     val emptyTimeSeries = createEmptyTimeSeries(inOut)
     //mergeFeatureRDDs(patientData, emptyTimeSeries)
   }
 
   def grabFeatures(patientData: RDD[PatientData], inOut: RDD[InOut],
-                   septicLabels: RDD[SepticLabel], percentSample: Double): Unit//RDD[(Long, MapKeyValue)] = {
+                   septicLabels: RDD[SepticLabel], percentSample: Double): Unit = {//RDD[(Long, MapKeyValue)] = {
 
     //same as grabFeatures, except it subsamples the patients by percentSample
     //have to guarantee some of the patients are septic
-    val sc = chartEvents.context
+    val sc = patientData.context
     val septicPatients: RDD[(Long, Int)] = septicLabels.map(_.patientId).
                                                 distinct.
                                                 sample(false, percentSample, 8803).
@@ -55,9 +55,9 @@ object ETL {
   }
 
   def grabFeatures(patientData: RDD[PatientData], inOut: RDD[InOut],
-                   allItemIds: RDD[Long], percentSample: Double): Unit//RDD[(Long, MapKeyValue)] = {
+                   percentSample: Double): Unit = {//RDD[(Long, MapKeyValue)] = {
 
-    val sc = chartEvents.context
+    val sc = patientData.context
     val patientsRdd: RDD[(Long, Int)] = inOut.map(_.patientId).distinct.
                                               sample(false, percentSample, 8803).
                                               map( x => (x, 0))
@@ -69,7 +69,7 @@ object ETL {
 
   // def mergeFeatureRDDs(patientData: RDD[PatientData],
   //                      emptyTimeSeries: RDD[((Long, Timestamp))]): RDD[(Long, MapKeyValue)] = {
-  //   val sc = chartEvents.context
+  //   val sc = patientData.context
   //   //first turn the gcsEvent into something that can be unioned with chartEvents
   //   //229000 = (max(itemid) in d_items / 1000 + 1) * 1000
   //   val keyedEvents = patientData.map(
@@ -211,7 +211,7 @@ object ETL {
     })
     //turn the v into part of the k, add a 0 (will act as the sepsis label later)
     val expanded = intermediate.flatMapValues(x => x).map({
-      case (k,v) => ((k, v), 0)
+      case (k,v) => ((k._1, k._2, v), 0)
     })
     expanded
   }
