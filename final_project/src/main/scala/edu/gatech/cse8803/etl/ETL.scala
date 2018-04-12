@@ -221,7 +221,7 @@ object ETL {
 
   def createEmptyTimeSeries(inOut: RDD[InOut], allItemIds: RDD[Long]): RDD[((Long, Timestamp), (Int, mutable.Map[Long, Double]))] = {
     val intermediate = inOut.map({
-      case io => (io.patientId, createTimeList(io.intime, io.outtime))
+      case io => ((io.patientId, io.icustayId), createTimeList(io.intime, io.outtime))
     })
     //turn the v into part of the k, add a 0 (will act as the sepsis label later)
     val expanded = intermediate.flatMapValues(x => x).map({

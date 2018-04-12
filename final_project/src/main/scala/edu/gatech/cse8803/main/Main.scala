@@ -208,14 +208,15 @@ object Main {
 
     val inOut: RDD[InOut] = sqlContext.sql(
       """
-        |SELECT subject_id, intime, outtime
+        |SELECT subject_id, icustay_id, intime, outtime
         |FROM carevue_in_out
       """.stripMargin
     ).
-    map( r => (r(0), r(1), r(2))).
+    map( r => (r(0), r(1), r(2), r(3))).
     filter (r => r._3.toString.length > 0).
-    map( r => InOut(r._1.toString.toLong, new Timestamp(dateFormat.parse(r._2.toString).getTime),
-                      new Timestamp(dateFormat.parse(r._3.toString).getTime))).cache()
+    map( r => InOut(r._1.toString.toLong, r._2.toString.toLong
+                      new Timestamp(dateFormat.parse(r._3.toString).getTime),
+                      new Timestamp(dateFormat.parse(r._4.toString).getTime))).cache()
     inOut.take(1)
     val sc = chartEvents.context
     val cePatients = chartEvents.map(_.patientId).distinct.map(x => (x, 1))
@@ -265,11 +266,12 @@ object Main {
 
     val inOut: RDD[InOut] = sqlContext.sql(
       """
-        |SELECT subject_id, intime, outtime
+        |SELECT subject_id, icustay_id, intime, outtime
         |FROM in_out
       """.stripMargin
-    ).map( r => InOut(r(0).toString.toLong, new Timestamp(dateFormat.parse(r(1).toString).getTime),
-                      new Timestamp(dateFormat.parse(r(2).toString).getTime))).cache()
+    ).map( r => InOut(r(0).toString.toLong, r(1).toString.toLong,
+                      new Timestamp(dateFormat.parse(r(2).toString).getTime),
+                      new Timestamp(dateFormat.parse(r(3).toString).getTime))).cache()
     inOut.take(1)
 
     val septicLabels: RDD[SepticLabel] = sqlContext.sql(
