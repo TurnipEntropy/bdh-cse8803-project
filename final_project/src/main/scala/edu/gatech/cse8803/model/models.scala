@@ -6,7 +6,6 @@ package edu.gatech.cse8803.model
 
 import java.sql.Timestamp
 
-
 case class ChartEvent(patientId: Long, datetime: Timestamp, itemid: Long, value: Double)
 
 case class GCSEvent(patientId: Long, datetime: Timestamp, gcsScore: Int)
@@ -16,9 +15,11 @@ case class InOut(patientId: Long, intime: Timestamp, outtime: Timestamp)
 case class SepticLabel(patientId: Long, datetime: Timestamp)
 
 case class PatientData(patientId: Long, icuStayId: Long, datetime: Timestamp,
-                       bpDia: Double, bpSys: Double, heartRate: Double, respRate: Double,
-                       temp: Double, spo2: Double, eyeOp: Double, verbal: Double,
-                       motor: Double, age: Int)
+                       bpDia: java.lang.Double, bpSys: java.lang.Double,
+                       heartRate: java.lang.Double, respRate: java.lang.Double,
+                       temp: java.lang.Double, spo2: java.lang.Double,
+                       eyeOp: java.lang.Double, verbal: java.lang.Double,
+                       motor: java.lang.Double, age: java.lang.Integer)
 
 abstract class VertexProperty
 

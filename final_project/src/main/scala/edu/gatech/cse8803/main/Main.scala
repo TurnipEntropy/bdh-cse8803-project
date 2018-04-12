@@ -133,7 +133,7 @@ object Main {
     List(
       homeString + "metavision_all_features.csv",
       homeString + "in_out.csv",
-      homeString + "septic_id_timestamp"
+      homeString + "septic_id_timestamp.csv"
     ).foreach(CSVUtils.loadCSVAsTable(sqlContext, _))
 
     val patientData: RDD[PatientData] = sqlContext.sql(
@@ -142,16 +142,37 @@ object Main {
          |       resp_rate, temp_f, spo2, eye_opening, verbal, motor, age
          |FROM metavision_all_features
       """.stripMargin).
-      map(row => PatientData(r(0).toString.toLong, r(1).toString.toLong,
-                             new Timestamp(dateFormat.parse(r(2).toString).getTime),
-                             r(3).toString.toDouble, r(4).toString.toDouble,
-                             r(5).toString.toDouble, r(6).toString.toDouble,
-                             r(7).toString.toDouble, r(8).toString.toDouble,
-                             r(9).toString.toDouble, r(10).toString.toDouble,
-                             r(11).toString.toDouble, r(12).toString.toInt)
-      ).cache
-      patientData.take(1)
-    )
+      map(r => PatientData(r(0).toString.toLong, r(1).toString.toLong,
+                             checkDate(r(0).toString, r(2).toString),
+                             checkForNull(r(3)), checkForNull(r(4)),
+                             checkForNull(r(5)), checkForNull(r(6)),
+                             checkForNull(r(7)), checkForNull(r(8)),
+                             checkForNull(r(9)), checkForNull(r(10)),
+                             checkForNull(r(11)),
+              if (r(12).toString.length > 0) java.lang.Integer.valueOf(r(12).toString.toInt) else null)
+      ).
+      filter({ case pdata => pdata.datetime != null}).cache
+    patientData.take(1)
+    val inOut: RDD[InOut] = sqlContext.sql(
+        """
+          |SELECT subject_id, intime, outtime
+          |FROM in_out
+        """.stripMargin
+    ).map( r => InOut(r(0).toString.toLong, checkDate(r(0).toString, r(1).toString),
+                        checkDate(r(0).toString, r(2).toString))).cache()
+    inOut.take(1)
+
+    val septicLabels: RDD[SepticLabel] = sqlContext.sql(
+        """
+          |SELECT *
+          |FROM septic_id_timestamp
+        """.stripMargin
+    ).map( r => SepticLabel(r(0).toString.toLong, new Timestamp(dateFormat.parse(r(1).toString).getTime))).cache()
+    septicLabels.take(1)
+
+    (patientData, inOut, septicLabels)
+
+
   }
   def loadLocalRddRawDataCareVue(sqlContext: SQLContext): (RDD[ChartEvent], RDD[GCSEvent], RDD[InOut]) = {
     val dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
@@ -280,5 +301,24 @@ object Main {
       case (arr1, arr2) => ((arr1(1).trim.toLong, arr1(0).trim.toInt),
                             (arr2(0).trim.toDouble, arr2(1).trim.toDouble))
     })
+  }
+
+  def checkForNull(rowVal: Any): java.lang.Double = {
+    if (rowVal.toString.length > 0) java.lang.Double.valueOf(rowVal.toString.toDouble) else null
+  }
+  def checkDate(strSID: String, strDate: String): Timestamp = {
+    val dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+    if (strDate.length <= 0) {
+      println(strSID)
+      null
+    } else {
+      new Timestamp(dateFormat.parse(strDate).getTime)
+    }
+  }
+
+  def runTest(): Unit = {
+    val sc = createContext
+    val sqlContext = new SQLContext(sc)
+    val (patientData, inOut, septicLabels) = loadLocalRddMetavisionData(sqlContext)
   }
 }
