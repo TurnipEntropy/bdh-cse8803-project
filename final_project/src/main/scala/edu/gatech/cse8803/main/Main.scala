@@ -309,6 +309,7 @@ object Main {
   def checkForNull(rowVal: Any): java.lang.Double = {
     if (rowVal.toString.length > 0) java.lang.Double.valueOf(rowVal.toString.toDouble) else null
   }
+  
   def checkDate(strSID: String, strDate: String): Timestamp = {
     val dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
     if (strDate.length <= 0) {
