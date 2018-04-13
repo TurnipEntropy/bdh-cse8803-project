@@ -99,7 +99,7 @@ object ETL {
     //this sort by requires the implicit ordering at the bottom of this object
     val groupedEvents = labeledLinkedEvents.groupByKey().mapValues(
       iter => iter.toList.sortBy(_._1)
-    )
+    ).cache
     //likely don't need combineByKey, can just iterate over the current list
     //since it is ordered.
     //idea: mapValues, create new mutable List, add value one at a time from
@@ -220,7 +220,17 @@ object ETL {
     val combinedLists = pList zip cList
     //have to hack around type safety here. Usually awesome, less so here.
     val imputedList:List[String] = combinedLists.map({
-      case (prev, cur) => if (cur == null) prev.toString else cur.toString
+      case (prev, cur) => {
+        if (cur == null){
+          if (prev != null){
+            prev.toString
+          } else {
+            ""
+          }
+        } else {
+          cur.toString
+        }
+      }
     })
     //let the hacking begin now
 
@@ -230,7 +240,8 @@ object ETL {
                     checkForNull(imputedList(5)), checkForNull(imputedList(6)),
                     checkForNull(imputedList(7)), checkForNull(imputedList(8)),
                     checkForNull(imputedList(9)), checkForNull(imputedList(10)),
-                    checkForNull(imputedList(11)), java.lang.Integer.parseInt(imputedList(12)))
+                    checkForNull(imputedList(11)),
+                    if (imputedList(12).length > 0) java.lang.Integer.parseInt(imputedList(12)) else null)
 
   }
 
