@@ -187,8 +187,15 @@ object ETL {
         }
         imputedList.toList.reverse
       }
+    }).cache
+    val flatImputed = fullyImputed.flatMapValues(x => x)
+    val missingData = flatImputed.filter({
+      case (k, v) => patientDataContainsNull(v._3)
+    }).collect
+    
+    flatImputed.filter({
+      case(k, v) => !missingData.contains(k._2)
     })
-    fullyImputed.flatMapValues(x => x)
   }
 
   def createEmptyTimeSeries(inOut: RDD[InOut]): RDD[((Long, Long, Timestamp), Int)] = {
@@ -253,6 +260,18 @@ object ETL {
     Seq(data.patientId, data.icuStayId, data.datetime, data.bpDia, data.bpSys,
         data.heartRate, data.respRate, data.temp, data.spo2, data.eyeOp, data.verbal,
         data.motor, data.age).toList
+  }
+
+  def patientDataContainsNull(d: PatientData): Boolean = {
+    //patientId and icuStayId are guaranteed to not be null
+    patientId: Long, icuStayId: Long, datetime: Timestamp,
+                           bpDia: jDouble, bpSys: jDouble, heartRate: jDouble,
+                           respRate: jDouble, temp: jDouble, spo2: jDouble,
+                           eyeOp: jDouble, verbal: jDouble, motor: jDouble,
+                           age: java.lang.Integer
+    d.datetime == null || d.bpDia == null || d.bpSys == null || d.heartRate == null ||
+    d.respRate == null || d.temp == null || d.spo2 == null || d.eyeOp == null ||
+    d.verbal == null || d.motor == null || d.age == null
   }
 
 

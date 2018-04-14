@@ -21,6 +21,10 @@ case class PatientData(patientId: Long, icuStayId: Long, datetime: Timestamp,
                        eyeOp: jDouble, verbal: jDouble, motor: jDouble,
                        age: java.lang.Integer)
 
+case class SummedGCSPatient(patientId: Long, icuStayId: Long, datetime: Timestamp,
+                       bpDia: jDouble, bpSys: jDouble, heartRate: jDouble,
+                       respRate: jDouble, temp: jDouble, spo2: jDouble,
+                       gcs: jDouble, age: java.lang.Integer)
 abstract class VertexProperty
 
 case class PatientProperty(patientID: String, sex: String, dob: String, dod: String) extends VertexProperty
