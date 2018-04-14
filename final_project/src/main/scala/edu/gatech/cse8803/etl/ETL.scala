@@ -14,7 +14,7 @@ object ETL {
                        jDouble, jDouble, jDouble, jDouble, jDouble, jDouble,
                        java.lang.Integer)
   type KeyTuple = (Long, Long)
-  type ValueTuple = (Timestamp, Int, PatientData)
+  type ValueTuple = (Timestamp, Int, SummedGCSPatient)
 
   def grabFeatures(patientData: RDD[PatientData], inOut: RDD[InOut],
                    septicLabels: RDD[SepticLabel]): RDD[(KeyTuple, ValueTuple)] = {
@@ -134,7 +134,19 @@ object ETL {
         imputedList.toList.reverse
       }
     })
-    fullyImputed.flatMapValues(x => x)
+    val flatImputed = fullyImputed.flatMapValues(x => x)
+    val missingData = flatImputed.filter({
+      case (k, v) => patientDataContainsNull(v._3)
+    }).collect
+
+    flatImputed.filter({
+      case(k, v) => !missingData.contains(k._2)
+    }).mapValues({
+      case(t, l, d) => (t, l,
+        new SummedGCSPatient(d.patientId, d.icuStayId, d.datetime,
+        d.bpDia, d.bpSys, d.heartRate, d.respRate, d.temp, d.spo2,
+        d.eyeOp + d.verbal + d.motor, d.ag))
+    })
   }
 
   def mergeFeatureRDDs(patientData: RDD[PatientData],
@@ -146,10 +158,11 @@ object ETL {
       evt => ((evt.patientId, evt.icuStayId, evt.datetime), evt)
     )
 
-    val linkedEvents = emptyTimeSeries.join(keyedEvents).join(map({
-      case (k,v) => ((k._1, k._2), (k._3, v._1, v._2))
+    val linkedEvents = emptyTimeSeries.leftOuterJoin(keyedEvents).map({
+      case (k,v) => ((k._1, k._2), (k._3, v._1.getOrElse(0), v._2.getOrElse(
+        new PatientData(k1, k2, v1, null, null, null, null, null, null, null, null, null, null)
+      )))
     }).cache
-
     //this sort by requires the implicit ordering at the bottom of this object
     val groupedEvents = linkedEvents.groupByKey().mapValues(
       iter => iter.toList.sortBy(_._1)
@@ -192,9 +205,14 @@ object ETL {
     val missingData = flatImputed.filter({
       case (k, v) => patientDataContainsNull(v._3)
     }).collect
-    
+
     flatImputed.filter({
       case(k, v) => !missingData.contains(k._2)
+    }).mapValues({
+      case(t, l, d) => (t, l,
+        new SummedGCSPatient(d.patientId, d.icuStayId, d.datetime,
+        d.bpDia, d.bpSys, d.heartRate, d.respRate, d.temp, d.spo2,
+        d.eyeOp + d.verbal + d.motor, d.ag))
     })
   }
 
@@ -263,12 +281,7 @@ object ETL {
   }
 
   def patientDataContainsNull(d: PatientData): Boolean = {
-    //patientId and icuStayId are guaranteed to not be null
-    patientId: Long, icuStayId: Long, datetime: Timestamp,
-                           bpDia: jDouble, bpSys: jDouble, heartRate: jDouble,
-                           respRate: jDouble, temp: jDouble, spo2: jDouble,
-                           eyeOp: jDouble, verbal: jDouble, motor: jDouble,
-                           age: java.lang.Integer
+    //patientId and icuStayId are guaranteed to not be null (they're a scala Long)
     d.datetime == null || d.bpDia == null || d.bpSys == null || d.heartRate == null ||
     d.respRate == null || d.temp == null || d.spo2 == null || d.eyeOp == null ||
     d.verbal == null || d.motor == null || d.age == null
