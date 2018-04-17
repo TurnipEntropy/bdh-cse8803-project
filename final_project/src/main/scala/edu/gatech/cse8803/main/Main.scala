@@ -34,95 +34,8 @@ object Main {
 
     val sc = Main.createContext
     val sqlContext = new SQLContext(sc)
-    /*val dbc = "jdbc:postgresql://hostmachine:9530/postgres?user=postgres&password=Password123"
-    classOf[org.postgresql.Driver]
-    val conn = DriverManager.getConnection(dbc)
-    val statement = conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_UPDATABLE)
-    try {
-      val prep = conn.prepareStatement("SELECT * FROM admissions WHERE subject_id = 61")
-      val rs: ResultSet = prep.executeQuery()
-    }*/
-
-    // val (cvChartEvents, cvGcsEvents, cvInOut) = Main.loadLocalRddRawDataCareVue(sqlContext)
-    // val cvAllItemIds: RDD[Long] = sc.parallelize(Seq(211, 618, 646, 678, 442, 51, 8368, 229000))
-    // val features:RDD[(Long, MapKeyValue)] = ETL.grabFeatures(cvChartEvents, cvGcsEvents,
-    //                                                           cvInOut, cvAllItemIds, 0.2).cache()
-    // features.take(1)
-    // //SUPER HACKY, but was kind of fun...
-    // val cvPreObservations: RDD[(Long, Array[Double])] = features.map({
-    //   case(long, (timestamp, (int, mutmap1, mutmap2))) =>
-    //     (long, mutmap1.toList.sortWith({
-    //       (a,b) => if (a._1 ==  211) { true } else { if (b._1 ==  211) { false } else {
-    //         if (a._1 ==  618) { true } else {if (b._1 ==  618) { false } else {
-    //           if (a._1 ==  646) { true } else {if (b._1 ==  646) { false } else {
-    //             if (a._1 ==  678) { true } else {if (b._1 ==  678) { false } else {
-    //               if (a._1 ==  442) { true } else {if (b._1 ==  442) { false } else {
-    //                 if (a._1 ==  51) { true } else {if (b._1 ==  51) { false } else {
-    //                   b._1 - a._1 > 0
-    //                 }}
-    //               }}
-    //             }}
-    //           }}
-    //         }}
-    //       }}
-    //     }).map(_._2).toArray)
-    //   }).cache()
-    //
-    // val cvObservationsPerPatient = cvPreObservations.groupByKey
-    /*
-    val (chartEvents, gcsEvents, inOut, septicLabels) = Main.loadLocalRddRawData(sqlContext)
-    val allItemIds: RDD[Long] = sc.parallelize(Seq(220179, 220050, 228152, 227243, 224167, 220059, 225309,
-                    220180, 220051, 228151, 227242, 224643, 220060, 225310,
-                    220045, 220210, 223761, 220277, 220739, 223900, 223901,
-                    226756, 226758, 228112, 226757, 227011, 227012, 227014, 229000))
-    val features: RDD[(Long, MapKeyValue)] = ETL.grabFeatures(chartEvents, gcsEvents,
-                                                              inOut, septicLabels, allItemIds, 0.2).cache()
-    features.take(1)
-    //need to transform them to be usable by the HmmModel
-    val ignore = Seq(227014, 227012, 227011, 226757, 228112, 226758, 226756, 220179, 220050,228152, 227243, 224167, 220059,
-                     220180, 220051, 228151, 227242, 224643, 220060, 220739, 223900, 223901)
-    // TODO: Was going to make alphabetical, instead just doing a map for carevue
-    val preObservations: RDD[(Long, Array[Double])] = features.map({
-      case (long, (timestamp, (int, mutmap1, mutmap2))) =>
-        (long, mutmap1.toList.filter(x => !ignore.contains(x._1)).
-        sortBy(_._1).map(_._2).toArray)
-    }).cache()
-    val observationsPerPatient = preObservations.groupByKey.mapValues(_.toList.asJava)
-    val observations = observationsPerPatient.map({
-      case (k, v) => v
-    }).collect.toList.asJava
-
-    var i = 0
-    val obsList = new java.util.ArrayList[java.util.ArrayList[ObservationVector]] ()
-    while (i < observations.size()) {
-      var j = 0
-      obsList.add(new java.util.ArrayList[ObservationVector])
-      while (j < observations.get(i).size()) {
-        if (observations.get(i).get(j).length == 9) {
-          obsList.get(i).add(new ObservationVector(observations.get(i).get(j)))
-        }
-        j += 1
-      }
-      i += 1
-    }
-
-    val kml: KMeansLearner[ObservationVector] = new KMeansLearner[ObservationVector] (
-      2, new OpdfMultiGaussianFactory(9), obsList
-    )
-
-    //Will need to get this working after serialization; workaround is above
-    /*
-    val preObservations: RDD[(Long, ObservationVector)] = features.map({
-      case (long, (timestamp, (int, mutmap1, mutmap2))) =>
-      (long, new ObservationVector(mutmap1.toList.filter(x => !ignore.contains(x._1)).
-                     sortBy(_._1).map(_._2).toArray))
-    })
-    val observationsPerPatient = preObservations.groupByKey.mapValues(_.toList.asJava)
-    val observations = observationsPerPatient.map({
-      case (k, v) => v
-    }).collect.toList.asJava*/
-    //now have a List<List<ObservationVector>>, can just run HMM I think
-   */
+    val (metaPatients, metaInOut, metaSepticLabel) = loadLocalRddMetavisionData(sqlContext)
+    val (cvPatients, cvInout) = loadLocalRddRawDataCareVue(sqlContext)
 
     sc.stop()
   }
@@ -309,7 +222,7 @@ object Main {
   def checkForNull(rowVal: Any): java.lang.Double = {
     if (rowVal.toString.length > 0) java.lang.Double.valueOf(rowVal.toString.toDouble) else null
   }
-  
+
   def checkDate(strSID: String, strDate: String): Timestamp = {
     val dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
     if (strDate.length <= 0) {
