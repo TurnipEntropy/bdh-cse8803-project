@@ -145,7 +145,7 @@ object ETL {
       case(t, l, d) => (t, l,
         new SummedGCSPatient(d.patientId, d.icuStayId, d.datetime,
         d.bpDia, d.bpSys, d.heartRate, d.respRate, d.temp, d.spo2,
-        d.eyeOp + d.verbal + d.motor, d.ag))
+        d.eyeOp + d.verbal + d.motor, d.age))
     })
   }
 
@@ -212,7 +212,7 @@ object ETL {
       case(t, l, d) => (t, l,
         new SummedGCSPatient(d.patientId, d.icuStayId, d.datetime,
         d.bpDia, d.bpSys, d.heartRate, d.respRate, d.temp, d.spo2,
-        d.eyeOp + d.verbal + d.motor, d.ag))
+        d.eyeOp + d.verbal + d.motor, d.age))
     })
   }
 
