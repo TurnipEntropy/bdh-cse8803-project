@@ -70,24 +70,28 @@ object ETL {
   }
 
   def mergeFeatureRDDs(patientData: RDD[PatientData],
-                       emptyTimeSeries: RDD[((Long, Timestamp))],
+                       emptyTimeSeries: RDD[((Long, Long, Timestamp), Int)],
                        septicLabels: RDD[SepticLabel]): RDD[(KeyTuple, ValueTuple)] = {
     val sc = patientData.context
-    //first turn the gcsEvent into something that can be unioned with chartEvents
-    //229000 = (max(itemid) in d_items / 1000 + 1) * 1000
+
     val keyedEvents = patientData.map(
       evt => ((evt.patientId, evt.icuStayId, evt.datetime), evt)
     )
     val keyedLabels = septicLabels.map(
-      label => ((label.patientId, label.datetime), 1)
+      label => ((label.patientId, label.icuStayId, label.datetime), 1)
     )
-    //first k, v => ((patientId, datetime), (icustayid, patientdata))
-    //second k,v => ((patientId, icustayId), (datetime, label, patientId))
-    val linkedEvents = emptyTimeSeries.leftOuterJoin(keyedEvents).map({
-      case (k, v) => ((k._1, k._3), (k._2, v._2))
-    }).leftOuterJoin(keyedLabels).
-    map({
-      case (k,v) => ((k._1, v._1._1), (k._2, v._2, v._1._2))
+
+    //starts ((patientid, icustayid, datetime), data or label)
+    //finishes as ((patientid, icustayid), (datetime, data))
+
+    val linkedEvents = emptyTimeSeries.leftOuterJoin(
+      keyedEvents
+    ).leftOuterJoin(
+      keyedLabels
+    ).map({
+      //k = (patientId, icustayid, datetime)
+      //v = ((Int, PatientData), label)
+      case (k, v) => (k, (v._1._1, v._1._2, v._2))
     }).cache
 
     val labeledLinkedEvents = linkedEvents.map({

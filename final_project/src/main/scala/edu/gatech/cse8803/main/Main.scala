@@ -22,9 +22,11 @@ import be.ac.ulg.montefiore.run.jahmm.learn._
 import serialize.MyRegistrator
 
 object Main {
-  type SmallMap = mutable.Map[Long, Double]
-  type InnerTuple = (Int, SmallMap, SmallMap)
-  type MapKeyValue = (Timestamp, InnerTuple)
+  type PatientTuple = (Long, Long, Timestamp, jDouble, jDouble, jDouble,
+                       jDouble, jDouble, jDouble, jDouble, jDouble, jDouble,
+                       java.lang.Integer)
+  type KeyTuple = (Long, Long)
+  type ValueTuple = (Timestamp, Int, SummedGCSPatient)
   def main(args: Array[String]) {
     import org.apache.log4j.Logger
     import org.apache.log4j.Level
@@ -35,7 +37,12 @@ object Main {
     val sc = Main.createContext
     val sqlContext = new SQLContext(sc)
     val (metaPatients, metaInOut, metaSepticLabel) = loadLocalRddMetavisionData(sqlContext)
-    val (cvPatients, cvInout) = loadLocalRddRawDataCareVue(sqlContext)
+    val dataset: RDD[(KeyTuple, ValueTuple)] = ETL.grabFeatures(metaPatients, metaInOut, metaSepticLabel).cache
+    val file = "file:///home/bdh/project/newly_labeled_dataset"
+    dataset.saveAsTextFile(file)
+    //val file = "file:///home/bdh/project/sampled_subject_ids"
+    //patientsRdd.saveAsTextFile(file)
+    //val (cvPatients, cvInout) = loadLocalRddRawDataCareVue(sqlContext)
 
     sc.stop()
   }
@@ -46,7 +53,7 @@ object Main {
     List(
       homeString + "metavision_all_features.csv",
       homeString + "in_out.csv",
-      homeString + "septic_id_timestamp.csv"
+      homeString + "septic_label_icustay_2.csv"
     ).foreach(CSVUtils.loadCSVAsTable(sqlContext, _))
 
     val patientData: RDD[PatientData] = sqlContext.sql(
@@ -81,7 +88,7 @@ object Main {
           |SELECT *
           |FROM septic_id_timestamp
         """.stripMargin
-    ).map( r => SepticLabel(r(0).toString.toLong, new Timestamp(dateFormat.parse(r(1).toString).getTime))).cache()
+    ).map( r => SepticLabel(r(0).toString.toLong, r(1).toString.toLong, new Timestamp(dateFormat.parse(r(2).toString).getTime))).cache()
     septicLabels.take(1)
 
     (patientData, inOut, septicLabels)
