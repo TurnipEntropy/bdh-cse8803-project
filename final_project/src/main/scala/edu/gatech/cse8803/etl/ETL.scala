@@ -93,18 +93,18 @@ object ETL {
       //k = (patientId, icustayid, datetime)
       //v = ((Int, PatientData), label)
       case (k, v) => ((k._1, k._2), (k._3, v._2, v._1._2))
-    }).cache
+    })
 
     val labeledLinkedEvents = linkedEvents.map({
       case (k, v) =>
         ((k._1, k._2), (v._1, v._2.getOrElse(0), v._3.getOrElse(
           new PatientData(k._1, k._2, v._1, null, null, null, null, null, null, null, null, null, null)
         )))
-    }).cache
+    })
     //this sort by requires the implicit ordering at the bottom of this object
     val groupedEvents = labeledLinkedEvents.groupByKey().mapValues(
       iter => iter.toList.sortBy(_._1)
-    ).cache
+    )
     //likely don't need combineByKey, can just iterate over the current list
     //since it is ordered.
     //idea: mapValues, create new mutable List, add value one at a time from
@@ -139,15 +139,11 @@ object ETL {
         imputedList.toList.reverse
       }
     })
-    val flatImputed = fullyImputed.flatMapValues(x => x)
-    val missingData = flatImputed.filter({
-      case (k, v) => patientDataContainsNull(v._3)
-    }).map({
-      case (k, v) => k._2
-    }).collect
+    val flatImputed = fullyImputed.flatMapValues(x => x).cache
+    println(flatImputed)
 
     flatImputed.filter({
-      case(k, v) => !missingData.contains(k._2)
+      case(k, v) => !patientDataContainsNull(v._3)
     }).mapValues({
       case(t, l, d) => (t, l,
         new SummedGCSPatient(d.patientId, d.icuStayId, d.datetime,
@@ -207,16 +203,11 @@ object ETL {
         }
         imputedList.toList.reverse
       }
-    }).cache
-    val flatImputed = fullyImputed.flatMapValues(x => x)
-    val missingData = flatImputed.filter({
-      case (k, v) => patientDataContainsNull(v._3)
-    }).map({
-      case (k, v) => k._2
-    }).collect
-
+    })
+    val flatImputed = fullyImputed.flatMapValues(x => x).cache
+    println(flatImputed.count)
     flatImputed.filter({
-      case(k, v) => !missingData.contains(k._2)
+      case(k, v) => !patientDataContainsNull(v._3)
     }).mapValues({
       case(t, l, d) => (t, l,
         new SummedGCSPatient(d.patientId, d.icuStayId, d.datetime,

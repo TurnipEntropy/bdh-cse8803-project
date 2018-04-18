@@ -37,7 +37,7 @@ object Main {
     val sc = Main.createContext
     val sqlContext = new SQLContext(sc)
     val (metaPatients, metaInOut, metaSepticLabel) = loadLocalRddMetavisionData(sqlContext)
-    val dataset: RDD[(KeyTuple, ValueTuple)] = ETL.grabFeatures(metaPatients, metaInOut, metaSepticLabel).cache
+    val dataset: RDD[(KeyTuple, ValueTuple)] = ETL.grabFeatures(metaPatients, metaInOut, metaSepticLabel).persist
     val file = "file:///home/bdh/project/newly_labeled_dataset"
     dataset.saveAsTextFile(file)
     //val file = "file:///home/bdh/project/sampled_subject_ids"
