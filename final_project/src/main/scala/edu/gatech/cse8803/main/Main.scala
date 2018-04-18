@@ -86,7 +86,7 @@ object Main {
     val septicLabels: RDD[SepticLabel] = sqlContext.sql(
         """
           |SELECT *
-          |FROM septic_id_timestamp
+          |FROM septic_label_icustay_2
         """.stripMargin
     ).map( r => SepticLabel(r(0).toString.toLong, r(1).toString.toLong, new Timestamp(dateFormat.parse(r(2).toString).getTime))).cache()
     septicLabels.take(1)
@@ -233,7 +233,7 @@ object Main {
   def checkDate(strSID: String, strDate: String): Timestamp = {
     val dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
     if (strDate.length <= 0) {
-      println(strSID)
+      //println(strSID)
       null
     } else {
       new Timestamp(dateFormat.parse(strDate).getTime)

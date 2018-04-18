@@ -142,6 +142,8 @@ object ETL {
     val flatImputed = fullyImputed.flatMapValues(x => x)
     val missingData = flatImputed.filter({
       case (k, v) => patientDataContainsNull(v._3)
+    }).map({
+      case (k, v) => k._2
     }).collect
 
     flatImputed.filter({
@@ -209,6 +211,8 @@ object ETL {
     val flatImputed = fullyImputed.flatMapValues(x => x)
     val missingData = flatImputed.filter({
       case (k, v) => patientDataContainsNull(v._3)
+    }).map({
+      case (k, v) => k._2
     }).collect
 
     flatImputed.filter({
