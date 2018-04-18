@@ -6,7 +6,7 @@ package edu.gatech.cse8803.main
 
 import java.sql.{DriverManager, ResultSet, Timestamp}
 import java.text.SimpleDateFormat
-
+import java.lang.{Double => jDouble}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.SQLContext
 import org.apache.spark.{SparkConf, SparkContext}
@@ -199,7 +199,7 @@ object Main {
         |SELECT *
         |FROM septic_id_timestamp
       """.stripMargin
-    ).map( r => SepticLabel(r(0).toString.toLong, new Timestamp(dateFormat.parse(r(1).toString).getTime))).cache()
+    ).map( r => SepticLabel(r(0).toString.toLong, r(1).toString.toLong, new Timestamp(dateFormat.parse(r(2).toString).getTime))).cache()
     septicLabels.take(1)
 
     (chartEvents, gcsEvents, inOut, septicLabels)

@@ -8,6 +8,7 @@ import java.sql.Timestamp
 import org.apache.commons.io.FileUtils
 import java.io.File
 import java.lang.{Double => jDouble}
+import java.text.SimpleDateFormat
 
 object ETL {
   type PatientTuple = (Long, Long, Timestamp, jDouble, jDouble, jDouble,
@@ -82,7 +83,7 @@ object ETL {
     )
 
     //starts ((patientid, icustayid, datetime), data or label)
-    //finishes as ((patientid, icustayid), (datetime, data))
+    //finishes as ((patientid, icustayid), (datetime, label, data))
 
     val linkedEvents = emptyTimeSeries.leftOuterJoin(
       keyedEvents
@@ -91,13 +92,13 @@ object ETL {
     ).map({
       //k = (patientId, icustayid, datetime)
       //v = ((Int, PatientData), label)
-      case (k, v) => (k, (v._1._1, v._1._2, v._2))
+      case (k, v) => ((k._1, k._2), (k._3, v._2, v._1._2))
     }).cache
 
     val labeledLinkedEvents = linkedEvents.map({
-      case ((k1, k2), (v1, v2, v3)) =>
-        ((k1, k2), (v1, v2.getOrElse(0), v3.getOrElse(
-          new PatientData(k1, k2, v1, null, null, null, null, null, null, null, null, null, null)
+      case (k, v) =>
+        ((k._1, k._2), (v._1, v._2.getOrElse(0), v._3.getOrElse(
+          new PatientData(k._1, k._2, v._1, null, null, null, null, null, null, null, null, null, null)
         )))
     }).cache
     //this sort by requires the implicit ordering at the bottom of this object
@@ -154,17 +155,17 @@ object ETL {
   }
 
   def mergeFeatureRDDs(patientData: RDD[PatientData],
-                       emptyTimeSeries: RDD[((Long, Timestamp))]): RDD[(KeyTuple, ValueTuple)] = {
+                       emptyTimeSeries: RDD[((Long, Long, Timestamp), Int)]): RDD[(KeyTuple, ValueTuple)] = {
     val sc = patientData.context
     //first turn the gcsEvent into something that can be unioned with chartEvents
     //229000 = (max(itemid) in d_items / 1000 + 1) * 1000
-    val keyedEvents = patientData.map(
+    val keyedEvents: RDD[((Long, Long, Timestamp), PatientData)] = patientData.map(
       evt => ((evt.patientId, evt.icuStayId, evt.datetime), evt)
     )
 
-    val linkedEvents = emptyTimeSeries.leftOuterJoin(keyedEvents).map({
-      case (k,v) => ((k._1, k._2), (k._3, v._1.getOrElse(0), v._2.getOrElse(
-        new PatientData(k1, k2, v1, null, null, null, null, null, null, null, null, null, null)
+    val linkedEvents: RDD[((Long, Long), (Timestamp, Int, PatientData))] = emptyTimeSeries.leftOuterJoin(keyedEvents).map({
+      case (k,v) => ((k._1, k._2), (k._3, v._1, v._2.getOrElse(
+        new PatientData(k._1, k._2, k._3, null, null, null, null, null, null, null, null, null, null)
       )))
     }).cache
     //this sort by requires the implicit ordering at the bottom of this object
