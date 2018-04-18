@@ -206,8 +206,7 @@ object Main {
   }
 
   def createContext(appName: String, masterUrl: String): SparkContext = {
-    val conf = new SparkConf().setAppName(appName).setMaster(masterUrl)
-    conf.set("spark.kryo.registrator", "serialize.MyRegistrator")
+    val conf = new SparkConf().setAppName(appName).setMaster(masterUrl).set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
     new SparkContext(conf)
   }
 
