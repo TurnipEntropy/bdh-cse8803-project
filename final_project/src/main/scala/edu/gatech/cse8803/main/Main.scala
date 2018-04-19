@@ -36,9 +36,10 @@ object Main {
 
     val sc = Main.createContext
     val sqlContext = new SQLContext(sc)
+    import sqlContext.implicits._
     val (metaPatients, metaInOut, metaSepticLabel) = loadLocalRddMetavisionData(sqlContext)
     val dataset: RDD[(KeyTuple, ValueTuple)] = ETL.grabFeatures(metaPatients, metaInOut, metaSepticLabel).persist
-    
+
     //val file = "file:///home/bdh/project/newly_labeled_dataset"
     //dataset.saveAsTextFile(file)
     //val file = "file:///home/bdh/project/sampled_subject_ids"
@@ -52,7 +53,7 @@ object Main {
     val dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
     val homeString = "file:///home/bdh/project/"
     List(
-      homeString + "metavision_all_features.csv",
+      homeString + "metavision_subset_features.csv",
       homeString + "in_out.csv",
       homeString + "septic_label_icustay_2.csv"
     ).foreach(CSVUtils.loadCSVAsTable(sqlContext, _))
@@ -61,7 +62,7 @@ object Main {
       """
          |SELECT subject_id, icustay_id, charttime, bp_dia, bp_sys, heart_rate,
          |       resp_rate, temp_f, spo2, eye_opening, verbal, motor, age
-         |FROM metavision_all_features
+         |FROM metavision_subset_features
       """.stripMargin).
       map(r => PatientData(r(0).toString.toLong, r(1).toString.toLong,
                              checkDate(r(0).toString, r(2).toString),

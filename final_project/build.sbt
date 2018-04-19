@@ -17,10 +17,10 @@ evictionWarningOptions in update :=
 
 
 libraryDependencies ++= Seq(
-  "org.apache.spark"          % "spark-core_2.10"              % "1.3.1" % "provided",
-  "org.apache.spark"          % "spark-mllib_2.10"             % "1.3.1",
-  "org.apache.spark"          % "spark-graphx_2.10"            % "1.3.1",
-  "com.databricks"            % "spark-csv_2.10"               % "1.3.0",
+  "org.apache.spark"          % "spark-core_2.10"              % "1.6.1",
+  "org.apache.spark"          % "spark-mllib_2.10"             % "1.6.1",
+  "org.apache.spark"          % "spark-graphx_2.10"            % "1.6.1",
+  "com.databricks"            % "spark-csv_2.10"               % "1.4.0",
   "org.postgresql"            % "postgresql"                   % "9.3-1102-jdbc41",
   "com.esotericsoftware.kryo" % "kryo"                         % "2.10"
 )
