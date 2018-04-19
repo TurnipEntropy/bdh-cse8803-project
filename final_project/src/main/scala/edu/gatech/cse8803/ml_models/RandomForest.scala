@@ -1,4 +1,4 @@
-import edu.gatech.cse8803.main.Main.{KeyTupe, ValueTuple}
+import edu.gatech.cse8803.main.Main.{KeyTuple, ValueTuple}
 import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark.sql.{DataFrame, SQLContext}
 import org.apache.spark.SparkContext
@@ -12,6 +12,8 @@ import org.apache.spark.ml.evaluation.BinaryClassificationEvaluator
 class RandomForest {
 
   var pipeline: PipelineModel = _
+  var sqlContext: SQLContext = _
+
   def train(data: RDD[(KeyTuple, ValueTuple)], numTrees: Int = 25): PipelineModel = {
     val training = convertRDDtoDF(data)
     val labelIndexer = new StringIndexer().setInputCol("label").
@@ -19,20 +21,20 @@ class RandomForest {
                                            fit(training)
     val rf = new RandomForestClassifier().setLabelCol("indexedLabel").
                                           setNumTrees(numTrees)
-    pipeline = new Pipeline().setStages(Array(labelIndexer, rf))
-    pipeline.fit(training)
-
+    val pipeline = new Pipeline().setStages(Array(labelIndexer, rf))
+    this.pipeline = pipeline.fit(training)
+    this.pipeline
   }
 
   def predict(data: RDD[(KeyTuple, ValueTuple)]): DataFrame = {
     val df = convertRDDtoDF(data)
-    pipeline.transform(df)
+    this.pipeline.transform(df)
   }
 
   def getAUC(predictions: DataFrame): Double = {
     val binEval = new BinaryClassificationEvaluator().setLabelCol("indexedLabel").
                                                       setRawPredictionCol("rawPrediction")
-    binEval.setMetricName("areaUnderROC").evalute(predictions)
+    binEval.setMetricName("areaUnderROC").evaluate(predictions)
   }
 
   def getAUC(data: RDD[(KeyTuple, ValueTuple)]): Double ={
@@ -44,11 +46,11 @@ class RandomForest {
   }
 
   def convertRDDtoDF(data: RDD[(KeyTuple, ValueTuple)]) = {
-    sqlContext = new SqlContext(data.context)
+    this.sqlContext = new SQLContext(data.context)
     val segmented = data.map({
       case (k,v) => (v._2.toDouble, Vectors.dense(v._3.bpDia, v._3.bpSys, v._3.heartRate,
-                     v._3.respRate, v._3.temp, v._3.spo2, v._3.gcs, v._3.age.toDouble)
+                     v._3.respRate, v._3.temp, v._3.spo2, v._3.gcs, v._3.age.toDouble))
     })
-    sqlContext.createDataFrame(segmented).toDF("label", "features")
+    this.sqlContext.createDataFrame(segmented).toDF("label", "features")
   }
 }

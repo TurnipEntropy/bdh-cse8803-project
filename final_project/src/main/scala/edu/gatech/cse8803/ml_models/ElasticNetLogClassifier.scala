@@ -23,6 +23,7 @@ class ElasticNetLogClassifier (elasticNetParam: Double = 0.15, fitIntercept: Boo
     val training = convertRDDtoDF(data)
 
     lrm = model.fit(training)
+    lrm
   }
 
   def predict(data: RDD[(KeyTuple, ValueTuple)]): DataFrame  = {
@@ -31,7 +32,7 @@ class ElasticNetLogClassifier (elasticNetParam: Double = 0.15, fitIntercept: Boo
   }
 
   def getAUC(): Double = {
-    getBinarySummary().areaUnderROC()
+    getBinarySummary().areaUnderROC
   }
   def getBinarySummary(): BinaryLogisticRegressionSummary = {
     lrm.summary.asInstanceOf[BinaryLogisticRegressionSummary]
@@ -41,11 +42,11 @@ class ElasticNetLogClassifier (elasticNetParam: Double = 0.15, fitIntercept: Boo
     lrm
   }
   def convertRDDtoDF(data: RDD[(KeyTuple, ValueTuple)]) = {
-    sqlContext = new SqlContext(data.context)
+    this.sqlContext = new SQLContext(data.context)
     val segmented = data.map({
       case (k,v) => (v._2.toDouble, Vectors.dense(v._3.bpDia, v._3.bpSys, v._3.heartRate,
-                     v._3.respRate, v._3.temp, v._3.spo2, v._3.gcs, v._3.age.toDouble)
+                     v._3.respRate, v._3.temp, v._3.spo2, v._3.gcs, v._3.age.toDouble))
     })
-    sqlContext.createDataFrame(segmented).toDF("label", "features")
+    this.sqlContext.createDataFrame(segmented).toDF("label", "features")
   }
 }
