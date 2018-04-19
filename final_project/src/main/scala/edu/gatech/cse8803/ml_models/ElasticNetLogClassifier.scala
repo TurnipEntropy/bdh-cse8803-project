@@ -1,12 +1,8 @@
 import org.apache.spark.ml.classification.{LogisticRegression, LogisticRegressionModel, BinaryLogisticRegressionSummary}
 import org.apache.spark.mllib.linalg.Vectors
-import org.apache.spark.ml.feature.VectorAssembler
-import org.apache.spark.mllib.util.MLUtils
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.types.{StructField, StructType, LongType, DoubleType, IntegerType}
 import org.apache.spark.sql.{DataFrame, SQLContext}
 import org.apache.spark.SparkContext
-import java.lang.{Double => jDouble}
 import edu.gatech.cse8803.main.Main.{PatientTuple, KeyTuple, ValueTuple}
 
 class ElasticNetLogClassifier (elasticNetParam: Double = 0.15, fitIntercept: Boolean = true,
@@ -20,7 +16,7 @@ class ElasticNetLogClassifier (elasticNetParam: Double = 0.15, fitIntercept: Boo
 
   var sqlContext: SQLContext = _
   private var lrm: LogisticRegressionModel = _
-  def train(data: RDD[(KeyTuple, ValueTuple)]) =  {
+  def train(data: RDD[(KeyTuple, ValueTuple)]): LogisticRegressionModel =  {
     //have to turn it into a DataFrame, with the first entry being the label
     //and the rest being the data.
     //k,v = (Long, Long), (Timestamp, Int, SummedGcsPatient)
