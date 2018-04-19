@@ -12,6 +12,7 @@ from hmmlearn import hmm
 import random
 import csv
 import warnings
+from DataLoader import DataLoader
 
 warnings.filterwarnings('ignore')
 
@@ -23,27 +24,8 @@ hash_table = {}
 labels = {}
 counts_0 = 0
 counts_1 = 0
-for i in range(4):
-    with open(path + prefix + str(i).zfill(2)) as data:
-        content = data.readlines()
-        for i in range(len(content)):
-            seq = content[i].split(",")
-            icu_id = seq[5]
-            if (icu_id in labels):
-                if (labels[icu_id] == 1):
-                    if (seq[3] == '0'):
-                        counts_0 += 1
-                else:
-                    counts_1 += 1
-                continue
-            
-            labels[icu_id] = seq[3]
-            if (seq[3] == '0'):
-                counts_0 += 1
-            else:
-                counts_1 += 1
-
-
+data_loader = DataLoader('I:\\EnTur\\Documents\\Big_Data_Health\\project\\newly_labeled_dataset\\')
+labels = data_loader.read_labels()
 
     
 for i in range(4):
