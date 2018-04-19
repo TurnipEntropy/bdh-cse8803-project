@@ -11,7 +11,6 @@ import org.apache.spark.ml.evaluation.BinaryClassificationEvaluator
 
 class RandomForest {
 
-  var model = new RandomForestClassifier().setNumTrees(10)
   var pipeline: PipelineModel = _
   def train(data: RDD[(KeyTuple, ValueTuple)], numTrees: Int = 25): PipelineModel = {
     val training = convertRDDtoDF(data)
