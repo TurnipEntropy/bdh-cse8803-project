@@ -20,14 +20,25 @@ class DataLoader:
         return data_files
 
     
-    def csv_to_2d_ndarray(self):
+    def csv_to_2d_ndarray(self, start=0, end=''):
         data_files = self.__get_files__()
-        pattern = re.compile('[^0-9\.,:]')
+        pattern = re.compile('[^0-9\.,:-]')
         csv = []
+        if (end != ''):
+            try:
+                int(end)
+            except ValueError as e:
+                print("end must be interpretable as an integer")
+                raise e
+            end = int(end)
+        print(end)
         for file in data_files:
             with open(self.directory + file) as data:
                 content = data.readlines()
-                cleaned = [re.sub(pattern, "", x).split(",") for x in content]
+                if (end == ''):
+                    cleaned = [re.sub(pattern, "", x).split(",")[start:] for x in content]    
+                else:
+                    cleaned = [re.sub(pattern, "", x).split(",")[start:end] for x in content]
                 csv.append(np.array(cleaned))
                 
         return np.concatenate(csv)
@@ -44,6 +55,7 @@ class DataLoader:
                     icu_id = seq[5]
                     labels[icu_id] = seq[3]
         return labels
+    
     
     def read_features(self):
         data_files = self.__get_files__()
@@ -70,6 +82,7 @@ class DataLoader:
             Xs.append(arrs)
             sizes.append((arrs.shape)[0])
         return (Xs, sizes)
+    
     
     def read_labels_and_features(self):
         data_files = self.__get_files__()
