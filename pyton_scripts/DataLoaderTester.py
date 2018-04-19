@@ -13,11 +13,13 @@ class DataLoaderTester:
     def test_read_labels(self):
         return self.data_loader.read_labels()
 
-
+    def test_csv_to_2d_ndarray(self):
+        return self.data_loader.csv_to_2d_ndarray()
+    
 def main():
     tester = DataLoaderTester()
-    labels = tester.test_read_labels()
-    print(labels)
+    data = tester.test_csv_to_2d_ndarray()
+    print(data)
 
 if __name__ == '__main__':
     main()

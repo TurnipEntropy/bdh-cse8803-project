@@ -7,7 +7,7 @@ Created on Tue Apr 17 23:56:47 2018
 
 import os
 import re
-import np
+import numpy as np
 
 class DataLoader:
     def __init__(self, directory):
@@ -20,18 +20,19 @@ class DataLoader:
         return data_files
 
     
-    def clean_csvs(self):
+    def csv_to_2d_ndarray(self):
         data_files = self.__get_files__()
         pattern = re.compile('[^0-9\.,:]')
         csv = []
         for file in data_files:
             with open(self.directory + file) as data:
                 content = data.readlines()
-                cleaned = [re.sub(pattern, "", x) for x in content]
+                cleaned = [re.sub(pattern, "", x).split(",") for x in content]
                 csv.append(np.array(cleaned))
-        return np.array(csv)
+                
+        return np.concatenate(csv)
         
-        
+    
     def read_labels(self):
         data_files = self.__get_files__()
         labels = {}
@@ -44,7 +45,7 @@ class DataLoader:
                     labels[icu_id] = seq[3]
         return labels
     
-    def read_data(self):
+    def read_features(self):
         data_files = self.__get_files__()
         hash_table = {}
         Xs = []
@@ -70,7 +71,7 @@ class DataLoader:
             sizes.append((arrs.shape)[0])
         return (Xs, sizes)
     
-    def read_labels_and_data(self):
+    def read_labels_and_features(self):
         data_files = self.__get_files__()
         hash_table = {}
         Xs = []
