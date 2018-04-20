@@ -1,3 +1,6 @@
+
+package edu.gatech.cse8803.ml_models
+
 import edu.gatech.cse8803.main.Main.{KeyTuple, ValueTuple}
 import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark.sql.{DataFrame, SQLContext}

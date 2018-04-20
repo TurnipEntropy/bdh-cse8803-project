@@ -1,3 +1,6 @@
+
+package edu.gatech.cse8803.ml_models
+
 import org.apache.spark.ml.classification.{LogisticRegression, LogisticRegressionModel, BinaryLogisticRegressionSummary}
 import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark.rdd.RDD
