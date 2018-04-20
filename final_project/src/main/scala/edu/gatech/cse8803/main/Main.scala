@@ -246,4 +246,11 @@ object Main {
     val sqlContext = new SQLContext(sc)
     val (patientData, inOut, septicLabels) = loadLocalRddMetavisionData(sqlContext)
   }
+
+  def quickStart(): RDD[(KeyTuple, ValueTuple)] = {
+    val sc = createContext
+    val sqlContext = new SQLContext(sc)
+    val (patientData, inOut, septicLabels) = loadLocalRddMetavisionData(sqlContext)
+    ETL.grabFeatures(patientData, inOut, septicLabels)
+  }
 }
