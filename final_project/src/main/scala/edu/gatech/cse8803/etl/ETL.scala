@@ -9,6 +9,7 @@ import org.apache.commons.io.FileUtils
 import java.io.File
 import java.lang.{Double => jDouble}
 import java.text.SimpleDateFormat
+import org.apache.spark.sql.DataFrame
 
 object ETL {
   type PatientTuple = (Long, Long, Timestamp, jDouble, jDouble, jDouble,
@@ -16,7 +17,72 @@ object ETL {
                        java.lang.Integer)
   type KeyTuple = (Long, Long)
   type ValueTuple = (Timestamp, Int, SummedGCSPatient)
+  type FlatPatientTuple = (Timestamp, Int, java.lang.Integer, jDouble, jDouble, jDouble, jDouble,
+                             jDouble, jDouble, jDouble)
 
+  def getInsightFeatures(
+    patientData: RDD[PatientData], inOut: RDD[InOut],
+    septicLabels: RDD[SepticLabel], windowSize: Int
+  ): Unit = {
+
+    def getRangeOfK(
+      input: List[FlatPatientTuple], index: Int, windowSize: Int
+    ): List[FlatPatientTuple] = { input.drop(index).take(windowSize) }
+
+    val windows: RDD[(KeyTuple, List[FlatPatientTuple])] = getWindows(patientData, inOut,
+                                                                      septicLabels, windowSize,
+                                                                      getRangeOfK)
+
+    //what follows is getting the Mi, Di, Dij, Dijk for each feature
+
+  }
+
+  def getSlidingWindowFeaturesWithOriginalFeatures(
+    patientData: RDD[PatientData], inOut: RDD[InOut], septicLabels: RDD[SepticLabel],
+    windowSize: Int
+  ): DataFrame = {
+    def getFirstAndKth(
+      input: List[FlatPatientTuple], index: Int, windowSize: Int
+    ): List[FlatPatientTuple] = {
+      Seq(input(index), input(index + windowSize)).toList
+    }
+    val windows: RDD[(KeyTuple, List[FlatPatientTuple])] = getWindows(patientData, inOut,
+                                                                      septicLabels, windowSize,
+                                                                      getFirstAndKth)
+    val slidingWindowsWithOrig = windows.mapValues({
+      case(l) => (l(0), l(1))
+    }).mapValues({
+      case (l1, l2) => (l2._2, Vectors.dense(l2._3, l2._4, l2._5, l2._6, l2._7, l2._8m, l2._9, l2._10,
+                        l2._4 - l1._4, l2._5 - l1._5, l2._6 - l1._6, l2._7 - l1._7,
+                        l2._8 - l1._8, l2._9 - l1._9, l2._10 - l1._10))
+    })
+    val sqlContext = new SQLContext(inOut.context)
+    sqlContext.createDataFrame(slidingWindowsWithOrig).toDF("label", "features")
+  }
+
+  def getWindows(
+    patientData: RDD[PatientData], inOut: RDD[InOut], septicLabels: RDD[SepticLabel],
+    windowSize: Int,
+    innerFunction: (List[FlatPatientTuple], Int, Int) => List[FlatPatientTuple]
+  ): RDD[(KeyTuple, List[FlatPatientTuple])] = {
+    val dataset: RDD[(KeyTuple, ValueTuple)] = grabFeatures(patientData, inOut, septicLabels)
+    val flattened: RDD[(KeyTuple, FlatPatientTuple)] = dataset.mapValues({
+      case (timestamp, label, pd) => (
+        timestamp, label, pd.age, pd.bpDia, pd.bpSys, pd.heartRate, pd.respRate,
+        pd.temp, pd.spo2, pd.gcs
+      )
+    })
+    val grouped = flattened.groupByKey().mapValues(l => l.toList.sortBy(_._1))
+    grouped.mapValues({
+      case(listOfTuples) => {
+        val list = scala.collection.mutable.ListBuffer[List[FlatPatientTuple]]()
+        for (i <- 0 to listOfTuples.length - windowSize){
+          list += innerFunction(listOfTuples, i, windowSize)
+        }
+        list.toList
+      }
+    }).flatMapValues(x => x)
+  }
   def grabFeatures(patientData: RDD[PatientData], inOut: RDD[InOut],
                    septicLabels: RDD[SepticLabel]): RDD[(KeyTuple, ValueTuple)] = {
 
