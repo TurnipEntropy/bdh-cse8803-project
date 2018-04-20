@@ -16,10 +16,7 @@ import edu.gatech.cse8803.ioutils.CSVUtils
 import edu.gatech.cse8803.model._
 import edu.gatech.cse8803.etl.ETL
 import scala.collection.mutable
-import scala.collection.JavaConverters._
-import be.ac.ulg.montefiore.run.jahmm._
-import be.ac.ulg.montefiore.run.jahmm.learn._
-import serialize.MyRegistrator
+import org.apache.spark.sql.DataFrame
 
 object Main {
   type PatientTuple = (Long, Long, Timestamp, jDouble, jDouble, jDouble,
@@ -241,10 +238,11 @@ object Main {
     }
   }
 
-  def runTest(): Unit = {
+  def quickerStart(): DataFrame = {
     val sc = createContext
     val sqlContext = new SQLContext(sc)
     val (patientData, inOut, septicLabels) = loadLocalRddMetavisionData(sqlContext)
+    ETL.getSlidingWindowFeaturesWithOriginalFeatures(patientData, inOut, septicLabels, 5)
   }
 
   def quickStart(): RDD[(KeyTuple, ValueTuple)] = {

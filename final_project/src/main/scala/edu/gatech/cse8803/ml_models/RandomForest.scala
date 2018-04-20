@@ -17,21 +17,19 @@ class RandomForest {
   var pipeline: PipelineModel = _
   var sqlContext: SQLContext = _
 
-  def train(data: RDD[(KeyTuple, ValueTuple)], numTrees: Int = 25): PipelineModel = {
-    val training = convertRDDtoDF(data).cache
+  def train(data: DataFrame, numTrees: Int = 25): PipelineModel = {
     val labelIndexer = new StringIndexer().setInputCol("label").
                                            setOutputCol("indexedLabel").
                                            fit(training)
     val rf = new RandomForestClassifier().setLabelCol("indexedLabel").
                                           setNumTrees(numTrees)
     val pipeline = new Pipeline().setStages(Array(labelIndexer, rf))
-    this.pipeline = pipeline.fit(training)
+    this.pipeline = pipeline.fit(data)
     this.pipeline
   }
 
-  def predict(data: RDD[(KeyTuple, ValueTuple)]): DataFrame = {
-    val df = convertRDDtoDF(data)
-    this.pipeline.transform(df)
+  def predict(data: DataFrame): DataFrame = {
+    this.pipeline.transform(data)
   }
 
   def getAUC(predictions: DataFrame): Double = {

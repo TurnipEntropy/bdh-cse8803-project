@@ -19,19 +19,17 @@ class ElasticNetLogClassifier (elasticNetParam: Double = 0.15, fitIntercept: Boo
 
   var sqlContext: SQLContext = _
   private var lrm: LogisticRegressionModel = _
-  def train(data: RDD[(KeyTuple, ValueTuple)]): LogisticRegressionModel =  {
+  def train(data: DataFrame): LogisticRegressionModel =  {
     //have to turn it into a DataFrame, with the first entry being the label
     //and the rest being the data.
     //k,v = (Long, Long), (Timestamp, Int, SummedGcsPatient)
-    val training = convertRDDtoDF(data).cache
 
-    lrm = model.fit(training)
+    lrm = model.fit(data)
     lrm
   }
 
-  def predict(data: RDD[(KeyTuple, ValueTuple)]): DataFrame  = {
-    val df = convertRDDtoDF(data)
-    lrm.transform(df)
+  def predict(data: DataFrame]): DataFrame  = {
+    lrm.transform(data)
   }
 
   def getAUC(): Double = {

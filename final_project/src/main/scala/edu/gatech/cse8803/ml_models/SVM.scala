@@ -23,6 +23,11 @@ class SVM {
   }
 
 
+  def convertDFtoRDD(data: DataFrame): RDD[LabeledPoint] = {
+    data.map(row => LabeledPoint(row.getDouble(0), row.getAs[Vector](1))
+  }
+
+  
   def convertRDDtoLabeledPointRDD(data: RDD[(KeyTuple, ValueTuple)]): RDD[LabeledPoint] = {
     this.sqlContext = new SQLContext(data.context)
     val segmented = data.map({

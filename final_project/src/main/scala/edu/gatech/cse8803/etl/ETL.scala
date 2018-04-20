@@ -10,6 +10,8 @@ import java.io.File
 import java.lang.{Double => jDouble}
 import java.text.SimpleDateFormat
 import org.apache.spark.sql.DataFrame
+import org.apache.spark.sql.SQLContext
+import org.apache.spark.mllib.linalg._
 
 object ETL {
   type PatientTuple = (Long, Long, Timestamp, jDouble, jDouble, jDouble,
@@ -44,17 +46,20 @@ object ETL {
     def getFirstAndKth(
       input: List[FlatPatientTuple], index: Int, windowSize: Int
     ): List[FlatPatientTuple] = {
-      Seq(input(index), input(index + windowSize)).toList
+      Seq(input(index), input(index + windowSize - 1)).toList
     }
     val windows: RDD[(KeyTuple, List[FlatPatientTuple])] = getWindows(patientData, inOut,
                                                                       septicLabels, windowSize,
                                                                       getFirstAndKth)
-    val slidingWindowsWithOrig = windows.mapValues({
-      case(l) => (l(0), l(1))
+    val slidingWindowsWithOrig: RDD[(Int, Vector)] = windows.mapValuees({
+      case(v) => (v(0), v(1))
     }).mapValues({
-      case (l1, l2) => (l2._2, Vectors.dense(l2._3, l2._4, l2._5, l2._6, l2._7, l2._8m, l2._9, l2._10,
-                        l2._4 - l1._4, l2._5 - l1._5, l2._6 - l1._6, l2._7 - l1._7,
-                        l2._8 - l1._8, l2._9 - l1._9, l2._10 - l1._10))
+      case (l1, l2) => (l2._2.toDouble, Vectors.dense(l2._3.toDouble, l2._4, l2._5, l2._6,
+                        l2._7, l2._8, l2._9, l2._10, l2._4 - l1._4, l2._5 - l1._5,
+                        l2._6 - l1._6, l2._7 - l1._7, l2._8 - l1._8, l2._9 - l1._9,
+                        l2._10 - l1._10))
+    }).map({
+      case(k,v) => v
     })
     val sqlContext = new SQLContext(inOut.context)
     sqlContext.createDataFrame(slidingWindowsWithOrig).toDF("label", "features")
@@ -83,6 +88,8 @@ object ETL {
       }
     }).flatMapValues(x => x)
   }
+
+
   def grabFeatures(patientData: RDD[PatientData], inOut: RDD[InOut],
                    septicLabels: RDD[SepticLabel]): RDD[(KeyTuple, ValueTuple)] = {
 
