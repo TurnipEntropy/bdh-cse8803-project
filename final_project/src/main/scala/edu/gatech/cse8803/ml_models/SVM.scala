@@ -26,12 +26,15 @@ class SVM {
   def getAUC(data: DataFrame): Double ={
     svmm.clearThreshold()
     val rdd = convertDFtoRDD(data)
-    val scoreAndLabels = rdd.map({
-      p => {
-        val score = svmm.predict(p.features)
-        (score, p.label)
-      }
-    })
+    val labels = rdd.map(p => p.label)
+    val features = rdd.map(p => p.features)
+    val scoreAndLabels = labels zip svmm.predict(features)
+    // val scoreAndLabels = rdd.map({
+    //   p => {
+    //     val score = svmm.predict(p.features)
+    //     (score, p.label)
+    //   }
+    // })
     val metrics = new BinaryClassificationMetrics(scoreAndLabels)
     metrics.areaUnderROC
   }

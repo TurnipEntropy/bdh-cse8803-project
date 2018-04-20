@@ -228,8 +228,7 @@ object ETL {
         imputedList.toList.reverse
       }
     })
-    val flatImputed = fullyImputed.flatMapValues(x => x).cache
-    println(flatImputed)
+    val flatImputed = fullyImputed.flatMapValues(x => x)
 
     flatImputed.filter({
       case(k, v) => !patientDataContainsNull(v._3)
@@ -254,7 +253,7 @@ object ETL {
       case (k,v) => ((k._1, k._2), (k._3, v._1, v._2.getOrElse(
         new PatientData(k._1, k._2, k._3, null, null, null, null, null, null, null, null, null, null)
       )))
-    }).cache
+    })
     //this sort by requires the implicit ordering at the bottom of this object
     val groupedEvents = linkedEvents.groupByKey().mapValues(
       iter => iter.toList.sortBy(_._1)
@@ -293,8 +292,7 @@ object ETL {
         imputedList.toList.reverse
       }
     })
-    val flatImputed = fullyImputed.flatMapValues(x => x).cache
-    println(flatImputed.count)
+    val flatImputed = fullyImputed.flatMapValues(x => x)
     flatImputed.filter({
       case(k, v) => !patientDataContainsNull(v._3)
     }).mapValues({

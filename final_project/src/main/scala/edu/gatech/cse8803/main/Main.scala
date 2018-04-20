@@ -29,33 +29,47 @@ object Main {
     import org.apache.log4j.Logger
     import org.apache.log4j.Level
 
-    Logger.getLogger("org").setLevel(Level.WARN)
-    Logger.getLogger("akka").setLevel(Level.WARN)
+    Logger.getLogger("org").setLevel(Level.DEBUG)
+    Logger.getLogger("akka").setLevel(Level.DEBUG)
 
     val sc = Main.createContext
     val sqlContext = new SQLContext(sc)
+    sqlContext.sql("set spark.sql.shuffle.partitions=3")
     import sqlContext.implicits._
+    println("Loading Data")
     val (metaPatients, metaInOut, metaSepticLabels) = loadLocalRddMetavisionData(sqlContext)
+    println("Performing ETL")
     val slidingOrigDataset: DataFrame = ETL.getSlidingWindowFeaturesWithOriginalFeatures(
       metaPatients, metaInOut, metaSepticLabels, 5
     ).cache
-
-    val slidingDataset: DataFrame = ETL.getSlidingWindowFeatures(
-      metaPatients, metaInOut, metaSepticLabels, 5
-    ).cache
-
-    val enlc = new ElasticNetLogClassifier(standardize = true)
-    val enlcm = enlc.train(slidingOrigDataset)
-    val enlcAUC = enlc.getAUC()
-
-    val rf = new RandomForest()
-    val rfm = rf.train(slidingOrigDataset)
-    val rfAUC = rf.getAUC(slidingOrigDataset)
-
-    val svm = new SVM()
-    val svmm = svm.train(slidingOrigDataset)
-    val svmmAUC = svm.getAUC(slidingOrigDataset)
-    println("Logistic Classifier AUC: $enlcAUC\nRandom Forest AUC: $rfAUC\nSVM AUC: $svmmAUC")
+    metaPatients.unpersist()
+    metaInOut.unpersist()
+    metaSepticLabels.unpersist()
+    // val slidingDataset: DataFrame = ETL.getSlidingWindowFeatures(
+    //   metaPatients, metaInOut, metaSepticLabels, 5
+    // ).cache
+    slidingOrigDataset.count
+    //slidingDataset.count
+    if (args(0) == "logistic") {
+      println("Running Logistic Classifier")
+      val enlc = new ElasticNetLogClassifier(standardize = true)
+      val enlcm = enlc.train(slidingOrigDataset)
+      val enlcAUC = enlc.getAUC()
+      println(s"Logistic Classifier AUC: $enlcAUC")
+    } else if (args(0) == "randomforest") {
+      println("Running Random Forest")
+      val rf = new RandomForest()
+      val rfm = rf.train(slidingOrigDataset)
+      val rfAUC = rf.getAUC(slidingOrigDataset)
+      println(s"Random Forest AUC: $rfAUC")
+    } else {
+      println("Running SVM")
+      val svm = new SVM()
+      val svmm = svm.train(slidingOrigDataset)
+      val svmmAUC = svm.getAUC(slidingOrigDataset)
+      println(s"SVM AUC: $svmmAUC")
+    }
+    //println("Logistic Classifier AUC: $enlcAUC\nRandom Forest AUC: $rfAUC\nSVM AUC: $svmmAUC")
 
     //val file = "file:///home/bdh/project/newly_labeled_dataset"
     //dataset.saveAsTextFile(file)
