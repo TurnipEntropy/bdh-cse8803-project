@@ -19,6 +19,7 @@ class ElasticNetLogClassifier (elasticNetParam: Double = 0.15, fitIntercept: Boo
 
   var sqlContext: SQLContext = _
   private var lrm: LogisticRegressionModel = _
+
   def train(data: DataFrame): LogisticRegressionModel =  {
     //have to turn it into a DataFrame, with the first entry being the label
     //and the rest being the data.
@@ -28,7 +29,7 @@ class ElasticNetLogClassifier (elasticNetParam: Double = 0.15, fitIntercept: Boo
     lrm
   }
 
-  def predict(data: DataFrame]): DataFrame  = {
+  def predict(data: DataFrame): DataFrame  = {
     lrm.transform(data)
   }
 
@@ -42,7 +43,8 @@ class ElasticNetLogClassifier (elasticNetParam: Double = 0.15, fitIntercept: Boo
   def getModel(): LogisticRegressionModel = {
     lrm
   }
-  def convertRDDtoDF(data: RDD[(KeyTuple, ValueTuple)]) = {
+
+  def convertRDDtoDF(data: RDD[(KeyTuple, ValueTuple)]): DataFrame = {
     this.sqlContext = new SQLContext(data.context)
     val segmented = data.map({
       case (k,v) => (v._2.toDouble, Vectors.dense(v._3.bpDia, v._3.bpSys, v._3.heartRate,

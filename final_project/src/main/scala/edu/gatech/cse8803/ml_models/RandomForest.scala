@@ -2,7 +2,7 @@
 package edu.gatech.cse8803.ml_models
 
 import edu.gatech.cse8803.main.Main.{KeyTuple, ValueTuple}
-import org.apache.spark.mllib.linalg.Vectors
+import org.apache.spark.mllib.linalg.{Vectors, Vector}
 import org.apache.spark.sql.{DataFrame, SQLContext}
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
@@ -20,7 +20,7 @@ class RandomForest {
   def train(data: DataFrame, numTrees: Int = 25): PipelineModel = {
     val labelIndexer = new StringIndexer().setInputCol("label").
                                            setOutputCol("indexedLabel").
-                                           fit(training)
+                                           fit(data)
     val rf = new RandomForestClassifier().setLabelCol("indexedLabel").
                                           setNumTrees(numTrees)
     val pipeline = new Pipeline().setStages(Array(labelIndexer, rf))
@@ -32,13 +32,14 @@ class RandomForest {
     this.pipeline.transform(data)
   }
 
-  def getAUC(predictions: DataFrame): Double = {
+  def getAUC(data: DataFrame, givenPredictions: Boolean = false): Double = {
+    val predictions = if (givenPredictions) data else predict(data)
     val binEval = new BinaryClassificationEvaluator().setLabelCol("indexedLabel").
                                                       setRawPredictionCol("rawPrediction")
     binEval.setMetricName("areaUnderROC").evaluate(predictions)
   }
 
-  def getAUC(data: RDD[(KeyTuple, ValueTuple)]): Double ={
+  def getAUC(data: DataFrame): Double ={
     val predictions = predict(data)
     val binEval = new BinaryClassificationEvaluator().setLabelCol("indexedLabel").
                                                       setRawPredictionCol("rawPrediction")

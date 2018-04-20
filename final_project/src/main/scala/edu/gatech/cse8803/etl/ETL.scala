@@ -39,19 +39,35 @@ object ETL {
 
   }
 
+  def getSlidingWindowFeatures(
+    patientData: RDD[PatientData], inOut: RDD[InOut], septicLabels: RDD[SepticLabel],
+    windowSize: Int
+  ): DataFrame = {
+    val windows: RDD[(KeyTuple, List[FlatPatientTuple])] = getWindows(patientData, inOut,
+                                                                      septicLabels, windowSize,
+                                                                      getFirstAndKth)
+    val slidingWindows: RDD[(Double, Vector)] = windows.mapValues({
+      case (v) => (v(0), v(1))
+    }).mapValues({
+      case(l1, l2) => (l2._2.toDouble, Vectors.dense(l2._3.toDouble, l2._4 - l1._4, l2._5 - l1._5,
+                      l2._6 - l1._6, l2._7 - l1._7, l2._8 - l1._8, l2._9 - l1._9,
+                      l2._10 - l1._10))
+    }).map({
+      case (k, v) => v
+    })
+    val sqlContext = new SQLContext(inOut.context)
+    sqlContext.createDataFrame(slidingWindows).toDF("label", "features")
+  }
+
   def getSlidingWindowFeaturesWithOriginalFeatures(
     patientData: RDD[PatientData], inOut: RDD[InOut], septicLabels: RDD[SepticLabel],
     windowSize: Int
   ): DataFrame = {
-    def getFirstAndKth(
-      input: List[FlatPatientTuple], index: Int, windowSize: Int
-    ): List[FlatPatientTuple] = {
-      Seq(input(index), input(index + windowSize - 1)).toList
-    }
+
     val windows: RDD[(KeyTuple, List[FlatPatientTuple])] = getWindows(patientData, inOut,
                                                                       septicLabels, windowSize,
                                                                       getFirstAndKth)
-    val slidingWindowsWithOrig: RDD[(Int, Vector)] = windows.mapValuees({
+    val slidingWindowsWithOrig: RDD[(Double, Vector)] = windows.mapValues({
       case(v) => (v(0), v(1))
     }).mapValues({
       case (l1, l2) => (l2._2.toDouble, Vectors.dense(l2._3.toDouble, l2._4, l2._5, l2._6,
@@ -298,6 +314,10 @@ object ETL {
       case (k,v) => ((k._1, k._2, v), 0)
     })
     expanded
+  }
+
+  def getFirstAndKth( input: List[FlatPatientTuple], index: Int, windowSize: Int ): List[FlatPatientTuple] = {
+    Seq(input(index), input(index + windowSize - 1)).toList
   }
 
   def createTimeList(in: Timestamp, out: Timestamp): List[Timestamp] = {

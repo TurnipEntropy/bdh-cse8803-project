@@ -2,7 +2,7 @@
 package edu.gatech.cse8803.ml_models
 
 import edu.gatech.cse8803.main.Main.{KeyTuple, ValueTuple}
-import org.apache.spark.mllib.linalg.Vectors
+import org.apache.spark.mllib.linalg.{Vectors, Vector}
 import org.apache.spark.sql.{DataFrame, SQLContext}
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
@@ -15,19 +15,33 @@ class SVM {
 
 
   var sqlContext: SQLContext = _
+  var svmm: SVMModel = _
 
+  def train(data: DataFrame, maxIter: Int = 10): SVMModel = {
+    val training = convertDFtoRDD(data).cache
+    svmm = SVMWithSGD.train(training, maxIter)
+    svmm
+  }
 
-  def train(data: RDD[(KeyTuple, ValueTuple)]): SVMModel = {
-    val training = convertRDDtoLabeledPointRDD(data).cache
-    SVMWithSGD.train(training, 2)
+  def getAUC(data: DataFrame): Double ={
+    svmm.clearThreshold()
+    val rdd = convertDFtoRDD(data)
+    val scoreAndLabels = rdd.map({
+      p => {
+        val score = svmm.predict(p.features)
+        (score, p.label)
+      }
+    })
+    val metrics = new BinaryClassificationMetrics(scoreAndLabels)
+    metrics.areaUnderROC
   }
 
 
   def convertDFtoRDD(data: DataFrame): RDD[LabeledPoint] = {
-    data.map(row => LabeledPoint(row.getDouble(0), row.getAs[Vector](1))
+    data.map(row => LabeledPoint(row.getDouble(0), row.getAs[Vector](1)))
   }
 
-  
+
   def convertRDDtoLabeledPointRDD(data: RDD[(KeyTuple, ValueTuple)]): RDD[LabeledPoint] = {
     this.sqlContext = new SQLContext(data.context)
     val segmented = data.map({

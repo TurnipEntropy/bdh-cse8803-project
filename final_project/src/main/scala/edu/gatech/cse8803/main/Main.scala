@@ -17,6 +17,7 @@ import edu.gatech.cse8803.model._
 import edu.gatech.cse8803.etl.ETL
 import scala.collection.mutable
 import org.apache.spark.sql.DataFrame
+import edu.gatech.cse8803.ml_models._
 
 object Main {
   type PatientTuple = (Long, Long, Timestamp, jDouble, jDouble, jDouble,
@@ -34,8 +35,27 @@ object Main {
     val sc = Main.createContext
     val sqlContext = new SQLContext(sc)
     import sqlContext.implicits._
-    val (metaPatients, metaInOut, metaSepticLabel) = loadLocalRddMetavisionData(sqlContext)
-    val dataset: RDD[(KeyTuple, ValueTuple)] = ETL.grabFeatures(metaPatients, metaInOut, metaSepticLabel).persist
+    val (metaPatients, metaInOut, metaSepticLabels) = loadLocalRddMetavisionData(sqlContext)
+    val slidingOrigDataset: DataFrame = ETL.getSlidingWindowFeaturesWithOriginalFeatures(
+      metaPatients, metaInOut, metaSepticLabels, 5
+    ).cache
+
+    val slidingDataset: DataFrame = ETL.getSlidingWindowFeatures(
+      metaPatients, metaInOut, metaSepticLabels, 5
+    ).cache
+
+    val enlc = new ElasticNetLogClassifier(standardize = true)
+    val enlcm = enlc.train(slidingOrigDataset)
+    val enlcAUC = enlc.getAUC()
+
+    val rf = new RandomForest()
+    val rfm = rf.train(slidingOrigDataset)
+    val rfAUC = rf.getAUC(slidingOrigDataset)
+
+    val svm = new SVM()
+    val svmm = svm.train(slidingOrigDataset)
+    val svmmAUC = svm.getAUC(slidingOrigDataset)
+    println("Logistic Classifier AUC: $enlcAUC\nRandom Forest AUC: $rfAUC\nSVM AUC: $svmmAUC")
 
     //val file = "file:///home/bdh/project/newly_labeled_dataset"
     //dataset.saveAsTextFile(file)
