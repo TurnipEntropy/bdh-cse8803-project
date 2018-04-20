@@ -18,7 +18,7 @@ class SVM {
 
 
   def train(data: RDD[(KeyTuple, ValueTuple)]): SVMModel = {
-    val training = convertRDDtoLabeledPointRDD(data)
+    val training = convertRDDtoLabeledPointRDD(data).cache
     SVMWithSGD.train(training, 2)
   }
 

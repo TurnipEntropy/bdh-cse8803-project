@@ -18,7 +18,7 @@ class RandomForest {
   var sqlContext: SQLContext = _
 
   def train(data: RDD[(KeyTuple, ValueTuple)], numTrees: Int = 25): PipelineModel = {
-    val training = convertRDDtoDF(data)
+    val training = convertRDDtoDF(data).cache
     val labelIndexer = new StringIndexer().setInputCol("label").
                                            setOutputCol("indexedLabel").
                                            fit(training)

@@ -23,7 +23,7 @@ class ElasticNetLogClassifier (elasticNetParam: Double = 0.15, fitIntercept: Boo
     //have to turn it into a DataFrame, with the first entry being the label
     //and the rest being the data.
     //k,v = (Long, Long), (Timestamp, Int, SummedGcsPatient)
-    val training = convertRDDtoDF(data)
+    val training = convertRDDtoDF(data).cache
 
     lrm = model.fit(training)
     lrm
