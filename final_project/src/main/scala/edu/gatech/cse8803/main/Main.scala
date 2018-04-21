@@ -18,6 +18,9 @@ import edu.gatech.cse8803.etl.ETL
 import scala.collection.mutable
 import org.apache.spark.sql.DataFrame
 import edu.gatech.cse8803.ml_models._
+import org.apache.spark.mllib.linalg.Vector
+import org.apache.spark.sql.functions.{udf, col, monotonicallyIncreasingId}
+import org.apache.spark.ml.feature.VectorAssembler
 
 object Main {
   type PatientTuple = (Long, Long, Timestamp, jDouble, jDouble, jDouble,
@@ -29,46 +32,86 @@ object Main {
     import org.apache.log4j.Logger
     import org.apache.log4j.Level
 
-    Logger.getLogger("org").setLevel(Level.DEBUG)
-    Logger.getLogger("akka").setLevel(Level.DEBUG)
+    Logger.getLogger("org").setLevel(Level.WARN)
+    Logger.getLogger("akka").setLevel(Level.WARN)
 
     val sc = Main.createContext
     val sqlContext = new SQLContext(sc)
     sqlContext.sql("set spark.sql.shuffle.partitions=3")
     import sqlContext.implicits._
-    println("Loading Data")
-    val (metaPatients, metaInOut, metaSepticLabels) = loadLocalRddMetavisionData(sqlContext)
-    println("Performing ETL")
-    val slidingOrigDataset: DataFrame = ETL.getSlidingWindowFeaturesWithOriginalFeatures(
-      metaPatients, metaInOut, metaSepticLabels, 5
-    ).cache
-    metaPatients.unpersist()
-    metaInOut.unpersist()
-    metaSepticLabels.unpersist()
+
     // val slidingDataset: DataFrame = ETL.getSlidingWindowFeatures(
     //   metaPatients, metaInOut, metaSepticLabels, 5
     // ).cache
-    slidingOrigDataset.count
+    //slidingOrigDataset.count
     //slidingDataset.count
-    if (args(0) == "logistic") {
-      println("Running Logistic Classifier")
+    if (args(0) == "etl") {
+      println("Running ETL and saving out CSVs of training and test data")
+      println("Loading Data")
+      val (metaPatients, metaInOut, metaSepticLabels) = loadLocalRddMetavisionData(sqlContext)
+      println("Performing ETL")
+      val slidingOrigDataset: RDD[(Double, Vector)] = ETL.getSlidingWindowFeaturesWithOriginalFeatures(
+        metaPatients, metaInOut, metaSepticLabels, 5
+      )
+      metaPatients.unpersist()
+      metaInOut.unpersist()
+      metaSepticLabels.unpersist()
+      slidingOrigDataset.take(125)
+      //val negativeArray = slidingOrigDataset.filter($"label" === "0").randomSplit(Array(0.75, 0.25), 8803L)
+      //val positiveArray = slidingOrigDataset.filter($"label" === "1").randomSplit(Array(0.75, 0.25), 8803L)
+      val negativeArray = slidingOrigDataset.filter(x => x._1 == 0.0).randomSplit(Array(0.75, 0.25), 8803L)
+      val positiveArray = slidingOrigDataset.filter(x => x._1 == 1.0).randomSplit(Array(0.75, 0.25), 8803L)
+
+      //negativeArray.take(125000)
+      //positiveArray.take(125000)
+      negativeArray(0).union(positiveArray(0)).saveAsTextFile("file:///home/bdh/project/training_data")
+      negativeArray(1).union(positiveArray(1)).saveAsTextFile("file:///home/bdh/project/test_data")
+      // negativeArray(0).unionAll(positiveArray(0)).coalesce(1).write.format("com.databricks.spark.csv").save("file:///home/bdh/project/training_data")
+      // negativeArray(1).unionAll(positiveArray(1)).coalesce(1).write.format("com.databricks.spark.csv").save("file:///home/bdh/project/test_data")
+    } else if (args(0) == "logistic_training") {
+      val trainingData: DataFrame = loadTrainingDataFrame(sqlContext)
       val enlc = new ElasticNetLogClassifier(standardize = true)
-      val enlcm = enlc.train(slidingOrigDataset)
-      val enlcAUC = enlc.getAUC()
-      println(s"Logistic Classifier AUC: $enlcAUC")
-    } else if (args(0) == "randomforest") {
-      println("Running Random Forest")
-      val rf = new RandomForest()
-      val rfm = rf.train(slidingOrigDataset)
-      val rfAUC = rf.getAUC(slidingOrigDataset)
-      println(s"Random Forest AUC: $rfAUC")
-    } else {
-      println("Running SVM")
-      val svm = new SVM()
-      val svmm = svm.train(slidingOrigDataset)
-      val svmmAUC = svm.getAUC(slidingOrigDataset)
-      println(s"SVM AUC: $svmmAUC")
+      val enlcm = enlc.train(trainingData)
+      enlcm.write.save("file:///home/bdh/logistic_classifier")
+      println(enlc.getAUC())
+    } else if (args(0) == "predict_carevue") {
+      val (carePatients, careInOut) = loadLocalRddCareVueData(sqlContext)
+      val slidingOrigDataset: RDD[(Long, Long, Timestamp), (Double, Vector)] =
+        ETL.getSlidingWindowFeaturesWithOriginalFeaturesCareVue(carePatients, careInOut, 5)
+      val carevueData: DataFrame = ETL.careVueDataFrameFromRDD(slidingOrigDataset)
+      val enlcm = LogisticRegressionModel.read.load("file:///home/bdh/logistic_classifier")
+      val preds = enlcm.transform(carevueData)
+      val outputPreds = preds.select("predictions").withColumn("id", monotonicallyIncreasingId).rdd
+      val output = slidingOrigDataset.zipWithIndex.map({
+        (k, v) => (k, v._1)
+      }).join(outputPreds)
+      output.write.csv("file:///home/bdh/predicted_carevue")
     }
+    // else if (args(0) == "logistic") {
+    //   println("Running Logistic Classifier")
+    //   val enlc = new ElasticNetLogClassifier(standardize = true)
+    //   val enlcm = enlc.train(slidingOrigDataset)
+    //   val enlcAUC = enlc.getAUC()
+    //   println(s"Logistic Classifier AUC: $enlcAUC")
+    //   enlc.getEvaluationMetrics(slidingOrigDataset).collect().foreach(println)
+    // } else if (args(0) == "randomforest") {
+    //   println("Running Random Forest")
+    //   val rf = new RandomForest()
+    //   val dataArray = slidingOrigDataset.filter($"label" === "0").randomSplit(Array(0.75, 0.25), 8803L)
+    //   val training = dataArray(0)
+    //   val testing = dataArray(1)
+    //   val rfm = rf.train(training, 8)
+    //   val rfAUC = rf.getAUC(testing)
+    //   slidingOrigDataset.unpersist
+    //   println(s"Random Forest AUC: $rfAUC")
+    //   rf.getEvaluationMetrics().collect().foreach(println)
+    // } else {
+    //   println("Running SVM")
+    //   val svm = new SVM()
+    //   val svmm = svm.train(slidingOrigDataset)
+    //   val svmmAUC = svm.getAUC(slidingOrigDataset)
+    //   println(s"SVM AUC: $svmmAUC")
+    // }
     //println("Logistic Classifier AUC: $enlcAUC\nRandom Forest AUC: $rfAUC\nSVM AUC: $svmmAUC")
 
     //val file = "file:///home/bdh/project/newly_labeled_dataset"
@@ -80,6 +123,59 @@ object Main {
     sc.stop()
   }
 
+  def loadTrainingDataFrame(sqlContext: SQLContext): DataFrame = {
+    val homeString = "file:///home/bdh/project/training/"
+    val dfList = List(
+      homeString + "part-00000",
+      homeString + "part-00001",
+      homeString + "part-00002",
+      homeString + "part-00003",
+      homeString + "part-00004",
+      homeString + "part-00005",
+      homeString + "part-00006",
+      homeString + "part-00007"
+    ).map(sqlContext.read.format("com.databricks.spark.csv").options(Map("header" -> "false")).load(_).toDF)
+
+    val oneDF = dfList.reduce{ (acc, entry) => acc.unionAll(entry) }
+    def removeSpecialCharacters: String => Double = _.replaceAll("[^a-zA-Z0-9.]", "").toDouble
+    val specialCharacterUDF = udf(removeSpecialCharacters)
+    val cleansedDF = oneDF.select(oneDF.columns.map(c => specialCharacterUDF(col(c)).alias(c)): _*)
+    //now that the annoying as all get out part is over... time for more annoying parts
+
+    val assembler = new VectorAssembler().setInputCols(Array("C1", "C2", "C3", "C4",
+                                                             "C5", "C6", "C7", "C8",
+                                                             "C9", "C10", "C11",
+                                                             "C12", "C13", "C14", "C15")
+                                                      ).setOutputCol("features")
+    assembler.transform(cleansedDF).select("C0", "features").withColumnRenamed("C0", "label")
+  }
+
+  def loadTestDataFrame(sqlContext: SQLContext): DataFrame = {
+    val homeString = "file:///home/bdh/project/test_data/"
+    val dfList = List(
+      homeString + "part-00000",
+      homeString + "part-00001",
+      homeString + "part-00002",
+      homeString + "part-00003",
+      homeString + "part-00004",
+      homeString + "part-00005",
+      homeString + "part-00006",
+      homeString + "part-00007"
+    ).map(sqlContext.read.format("com.databricks.spark.csv").options(Map("header" -> "false")).load(_).toDF)
+
+    val oneDF = dfList.reduce{ (acc, entry) => acc.unionAll(entry) }
+    def removeSpecialCharacters: String => Double = _.replaceAll("[^a-zA-Z0-9.]", "").toDouble
+    val specialCharacterUDF = udf(removeSpecialCharacters)
+    val cleansedDF = oneDF.select(oneDF.columns.map(c => specialCharacterUDF(col(c)).alias(c)): _*)
+    //now that the annoying as all get out part is over... time for more annoying parts
+
+    val assembler = new VectorAssembler().setInputCols(Array("C1", "C2", "C3", "C4",
+                                                             "C5", "C6", "C7", "C8",
+                                                             "C9", "C10", "C11",
+                                                             "C12", "C13", "C14", "C15")
+                                                      ).setOutputCol("features")
+    assembler.transform(cleansedDF).select("C0", "features").withColumnRenamed("C0", "label")
+  }
   def loadLocalRddMetavisionData(sqlContext: SQLContext): (RDD[PatientData], RDD[InOut], RDD[SepticLabel]) = {
     val dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
     val homeString = "file:///home/bdh/project/"
@@ -104,8 +200,8 @@ object Main {
                              checkForNull(r(11)),
               if (r(12).toString.length > 0) java.lang.Integer.valueOf(r(12).toString.toInt) else null)
       ).
-      filter({ case pdata => pdata.datetime != null}).cache
-    patientData.take(1)
+      filter({ case pdata => pdata.datetime != null})
+
     val inOut: RDD[InOut] = sqlContext.sql(
         """
           |SELECT subject_id, icustay_id, intime, outtime
@@ -114,15 +210,15 @@ object Main {
     ).map( r => InOut(r(0).toString.toLong, r(1).toString.toLong,
                         checkDate(r(0).toString, r(2).toString),
                         checkDate(r(0).toString, r(3).toString))).cache()
-    inOut.take(1)
+
 
     val septicLabels: RDD[SepticLabel] = sqlContext.sql(
         """
           |SELECT *
           |FROM septic_label_icustay_2
         """.stripMargin
-    ).map( r => SepticLabel(r(0).toString.toLong, r(1).toString.toLong, new Timestamp(dateFormat.parse(r(2).toString).getTime))).cache()
-    septicLabels.take(1)
+    ).map( r => SepticLabel(r(0).toString.toLong, r(1).toString.toLong, new Timestamp(dateFormat.parse(r(2).toString).getTime)))
+
 
     (patientData, inOut, septicLabels)
 
@@ -147,7 +243,7 @@ object Main {
                           r(2).toString.toLong,
                           r(3).toString.toDouble
                           )
-      ).cache()
+      )
       chartEvents.take(1)
 
     val gcsEvents: RDD[GCSEvent] = sqlContext.sql(
@@ -239,7 +335,7 @@ object Main {
   }
 
   def createContext(appName: String, masterUrl: String): SparkContext = {
-    val conf = new SparkConf().setAppName(appName).setMaster(masterUrl).set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+    val conf = new SparkConf().setAppName(appName).setMaster(masterUrl)//.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
     new SparkContext(conf)
   }
 
@@ -272,12 +368,12 @@ object Main {
     }
   }
 
-  def quickerStart(): DataFrame = {
-    val sc = createContext
-    val sqlContext = new SQLContext(sc)
-    val (patientData, inOut, septicLabels) = loadLocalRddMetavisionData(sqlContext)
-    ETL.getSlidingWindowFeaturesWithOriginalFeatures(patientData, inOut, septicLabels, 5)
-  }
+  // def quickerStart(): DataFrame = {
+  //   val sc = createContext
+  //   val sqlContext = new SQLContext(sc)
+  //   val (patientData, inOut, septicLabels) = loadLocalRddMetavisionData(sqlContext)
+  //   ETL.getSlidingWindowFeaturesWithOriginalFeatures(patientData, inOut, septicLabels, 5)
+  // }
 
   def quickStart(): RDD[(KeyTuple, ValueTuple)] = {
     val sc = createContext

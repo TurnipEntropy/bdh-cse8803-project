@@ -36,6 +36,17 @@ object ETL {
                                                                       getRangeOfK)
 
     //what follows is getting the Mi, Di, Dij, Dijk for each feature
+    val emptyPatient = (new java.sql.Timestamp(0), 0, new java.lang.Integer(0), new jDouble(0.0),
+                        new jDouble(0.0), new jDouble(0.0), new jDouble(0.0), new jDouble(0.0),
+                        new jDouble(0.0), new jDouble(0.0))
+    // val means = windows.mapValues({
+    //   case (list) => list.reduce(emptyPatient)({
+    //     case (acc, entry) => (entry._1, entry._2, entry._3, acc._4 + entry._4,
+    //                           acc._5 + entry._5, acc._6 + entry._6, acc._7 + entry._7,
+    //                           acc._8 + entry._8, acc._9 + entry._9, acc._10 + entry._10)
+    //   })
+    // })
+
 
   }
 
@@ -62,7 +73,7 @@ object ETL {
   def getSlidingWindowFeaturesWithOriginalFeatures(
     patientData: RDD[PatientData], inOut: RDD[InOut], septicLabels: RDD[SepticLabel],
     windowSize: Int
-  ): DataFrame = {
+  ): RDD[(Double, Vector)] = {
 
     val windows: RDD[(KeyTuple, List[FlatPatientTuple])] = getWindows(patientData, inOut,
                                                                       septicLabels, windowSize,
@@ -77,8 +88,9 @@ object ETL {
     }).map({
       case(k,v) => v
     })
-    val sqlContext = new SQLContext(inOut.context)
-    sqlContext.createDataFrame(slidingWindowsWithOrig).toDF("label", "features")
+    slidingWindowsWithOrig
+    // val sqlContext = new SQLContext(inOut.context)
+    // sqlContext.createDataFrame(slidingWindowsWithOrig).toDF("label", "features")
   }
 
   def getWindows(

@@ -10,7 +10,7 @@ import edu.gatech.cse8803.main.Main.{PatientTuple, KeyTuple, ValueTuple}
 
 class ElasticNetLogClassifier (elasticNetParam: Double = 0.15, fitIntercept: Boolean = true,
                                maxIter: Int = 10, standardize: Boolean = false,
-                               threshold: Double = 0.1){
+                               threshold: Double = 0.5){
   var model: LogisticRegression = new LogisticRegression().setMaxIter(maxIter).
                                                            setElasticNetParam(elasticNetParam).
                                                            setFitIntercept(fitIntercept).
@@ -19,6 +19,7 @@ class ElasticNetLogClassifier (elasticNetParam: Double = 0.15, fitIntercept: Boo
 
   var sqlContext: SQLContext = _
   private var lrm: LogisticRegressionModel = _
+  var prevPredictions: DataFrame = _
 
   def train(data: DataFrame): LogisticRegressionModel =  {
     //have to turn it into a DataFrame, with the first entry being the label
@@ -30,12 +31,31 @@ class ElasticNetLogClassifier (elasticNetParam: Double = 0.15, fitIntercept: Boo
   }
 
   def predict(data: DataFrame): DataFrame  = {
-    lrm.transform(data)
+    val pred = lrm.transform(data)
+    prevPredictions = pred
+    pred
+  }
+
+  def getEvaluationMetrics(data: DataFrame): RDD[(Int, Int)] = {
+    val preds = predict(data)
+    val confusionMatrix = preds.map({
+      case row => if (row(0).toString.toDouble == 0.0 && row(4).toString.toDouble == 0.0){
+        (0, 1)
+      } else if (row(0).toString.toDouble == 0.0 && row(4).toString.toDouble == 1.0) {
+        (-1, 1)
+      } else if (row(0).toString.toDouble == 1.0 && row(4).toString.toDouble == 1.0) {
+        (1, 1)
+      } else {
+        (-2, 1)
+      }
+    }).reduceByKey(_+_)
+    confusionMatrix
   }
 
   def getAUC(): Double = {
     getBinarySummary().areaUnderROC
   }
+
   def getBinarySummary(): BinaryLogisticRegressionSummary = {
     lrm.summary.asInstanceOf[BinaryLogisticRegressionSummary]
   }

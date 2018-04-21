@@ -10,26 +10,79 @@ import org.apache.spark.ml.classification.{RandomForestClassificationModel, Rand
 import org.apache.spark.ml.{Pipeline, PipelineModel}
 import org.apache.spark.ml.feature.{IndexToString, StringIndexer, VectorIndexer}
 import org.apache.spark.ml.evaluation.BinaryClassificationEvaluator
-
+import org.apache.spark.sql.functions.monotonicallyIncreasingId
 
 class RandomForest {
 
   var pipeline: PipelineModel = _
   var sqlContext: SQLContext = _
+  //cache predictions
+  var prevDataFrame: String = "0x0"
+  var prevPredictions: DataFrame = _
 
-  def train(data: DataFrame, numTrees: Int = 25): PipelineModel = {
+  def train(data: DataFrame, numTrees: Int = 2): PipelineModel = {
     val labelIndexer = new StringIndexer().setInputCol("label").
                                            setOutputCol("indexedLabel").
                                            fit(data)
     val rf = new RandomForestClassifier().setLabelCol("indexedLabel").
                                           setNumTrees(numTrees)
+
+
     val pipeline = new Pipeline().setStages(Array(labelIndexer, rf))
     this.pipeline = pipeline.fit(data)
     this.pipeline
   }
 
   def predict(data: DataFrame): DataFrame = {
-    this.pipeline.transform(data)
+    if (data.toString() == prevDataFrame) {
+      prevPredictions
+    } else {
+      prevDataFrame = data.toString()
+      prevPredictions = this.pipeline.transform(data).select("indexedLabel", "prediction", "rawPrediction")
+      prevPredictions
+    }
+  }
+
+  def getEvaluationMetrics(): RDD[(Int, Int)] = {
+    if (prevDataFrame != "0x0") {
+      val confusionMatrix = prevPredictions.map({
+        case row => if (row(0).toString.toDouble == 0.0 && row(1).toString.toDouble == 0.0){
+          (0, 1)
+        } else if (row(0).toString.toDouble == 0.0 && row(1).toString.toDouble == 1.0) {
+          (-1, 1)
+        } else if (row(0).toString.toDouble == 1.0 && row(1).toString.toDouble == 1.0) {
+          (1, 1)
+        } else {
+          (-2, 1)
+        }
+      }).reduceByKey(_+_)
+      confusionMatrix
+    } else {
+      val sc = SparkContext.getOrCreate()
+      sc.emptyRDD[(Int, Int)]
+    }
+  }
+
+  def getEvaluationMetrics(data: DataFrame): Unit = {
+    val preds = {
+      if (prevDataFrame != data.toString()) {
+        predict(data)
+      } else {
+        prevPredictions
+      }
+    }
+    val confusionMatrix = preds.map({
+      case row => if (row(0).toString.toDouble == 0.0 && row(1).toString.toDouble == 0.0){
+        (0, 1)
+      } else if (row(0).toString.toDouble == 0.0 && row(1).toString.toDouble == 1.0) {
+        (-1, 1)
+      } else if (row(0).toString.toDouble == 1.0 && row(1).toString.toDouble == 1.0) {
+        (1, 1)
+      } else {
+        (-2, 1)
+      }
+    }).reduceByKey(_+_)
+    println(confusionMatrix.take(4))
   }
 
   def getAUC(data: DataFrame, givenPredictions: Boolean = false): Double = {
@@ -37,14 +90,6 @@ class RandomForest {
     val binEval = new BinaryClassificationEvaluator().setLabelCol("indexedLabel").
                                                       setRawPredictionCol("rawPrediction")
     binEval.setMetricName("areaUnderROC").evaluate(predictions)
-  }
-
-  def getAUC(data: DataFrame): Double ={
-    val predictions = predict(data)
-    val binEval = new BinaryClassificationEvaluator().setLabelCol("indexedLabel").
-                                                      setRawPredictionCol("rawPrediction")
-    binEval.setMetricName("areaUnderROC").evaluate(predictions)
-
   }
 
   def convertRDDtoDF(data: RDD[(KeyTuple, ValueTuple)]) = {
