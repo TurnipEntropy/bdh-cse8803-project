@@ -99,9 +99,9 @@ object Main {
             1.0 - balancingRatio
           }
         }
-        val weightedTraining = training.withColumn("classWeightsCol", calculateWeights(training("label")))
+        val weightedTraining = training.withColumn("classWeightCol", calculateWeights(training("label")))
         val enlc = new ElasticNetLogClassifier(standardize = true, maxIter = 20, addWeightsCol = true)
-        val enlcm = enlc.train(training)
+        val enlcm = enlc.train(weightedTraining)
         val predictions = enlc.predict(testing)
         predictions.write.format("com.databricks.spark.csv").save("file:///home/bdh/project/predictions/" + i.toString)
         training.unpersist()
