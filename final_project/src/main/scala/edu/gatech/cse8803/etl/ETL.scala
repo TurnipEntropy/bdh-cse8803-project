@@ -50,6 +50,8 @@ object ETL {
 
   }
 
+
+
   def getSlidingWindowFeatures(
     patientData: RDD[PatientData], inOut: RDD[InOut], septicLabels: RDD[SepticLabel],
     windowSize: Int
@@ -93,6 +95,50 @@ object ETL {
     // sqlContext.createDataFrame(slidingWindowsWithOrig).toDF("label", "features")
   }
 
+  def careVueDataFrameFromRDD(data: RDD[((Long, Long, Timestamp), (Double, Vector))]): DataFrame = {
+      val withoutKey: RDD[(Double, Vector)] = data.values
+      val sqlContext = new SQLContext(data.context)
+      sqlContext.createDataFrame(withoutKey).toDF("label", "features")
+  }
+
+  def getSlidingWindowFeaturesWithOriginalFeaturesCareVue(
+    patientData: RDD[SummedGCSPatient], inOut: RDD[InOut], windowSize: Int
+  ): RDD[((Long, Long, Timestamp), (Double, Vector))] = {
+    val windows: RDD[(KeyTuple, List[FlatPatientTuple])] = getWindows(patientData, inOut,
+                                                                      windowSize, getFirstAndKth)
+    val slidingWindowsWithOrig: RDD[((Long, Long, Timestamp), (Double, Vector))] = windows.map({
+      case (k,v) => ((k._1, k._2, v(1)._1), (v(0), v(1)))
+    }).mapValues({
+      case(l1, l2) => (l2._2.toDouble, Vectors.dense(l2._3.toDouble, l2._4, l2._5, l2._6,
+                        l2._7, l2._8, l2._9, l2._10, l2._4 - l1._4, l2._5 - l1._5,
+                        l2._6 - l1._6, l2._7 - l1._7, l2._8 - l1._8, l2._9 - l1._9,
+                        l2._10 - l1._10))
+    })
+    slidingWindowsWithOrig
+  }
+
+  def getWindows(patientData: RDD[SummedGCSPatient], inOut: RDD[InOut], windowSize: Int,
+                 innerFunction: (List[FlatPatientTuple], Int, Int) => List[FlatPatientTuple]
+  ): RDD[(KeyTuple, List[FlatPatientTuple])] = {
+    val dataset: RDD[(KeyTuple, ValueTuple)] = grabFeatures(patientData, inOut)
+    val flattened: RDD[(KeyTuple, FlatPatientTuple)] = dataset.mapValues({
+      case(timestamp, label, pd) => (
+        timestamp, label, pd.age, pd.bpDia, pd.bpSys, pd.heartRate, pd.respRate,
+        pd.temp, pd.spo2, pd.gcs
+      )
+    })
+    val grouped = flattened.groupByKey().mapValues(l => l.toList.sortBy(_._1))
+    grouped.mapValues({
+      case (listOfTuples) => {
+        val list = scala.collection.mutable.ListBuffer[List[FlatPatientTuple]]()
+        for (i <- 0 to listOfTuples.length - windowSize) {
+          list += innerFunction(listOfTuples, i, windowSize)
+        }
+        list.toList
+      }
+    }).flatMapValues(x => x)
+  }
+
   def getWindows(
     patientData: RDD[PatientData], inOut: RDD[InOut], septicLabels: RDD[SepticLabel],
     windowSize: Int,
@@ -123,6 +169,11 @@ object ETL {
 
     val emptyTimeSeries = createEmptyTimeSeries(inOut)
     mergeFeatureRDDs(patientData, emptyTimeSeries, septicLabels)
+  }
+
+  def grabFeatures(patientData: RDD[SummedGCSPatient], inOut: RDD[InOut], erasureBlock: Int = 5): RDD[(KeyTuple, ValueTuple)] = {
+    val emptyTimeSeries = createEmptyTimeSeries(inOut)
+    mergeFeatureRDDs(patientData, emptyTimeSeries)
   }
 
   def grabFeatures(patientData: RDD[PatientData], inOut: RDD[InOut]): RDD[(KeyTuple, ValueTuple)] = {
@@ -169,6 +220,65 @@ object ETL {
     val sampledPatientData = patientData.filter( x => patients.contains(x.patientId)).cache()
     val sampledInOut = inOut.filter( x => patients.contains(x.patientId)).cache()
     grabFeatures(sampledPatientData, sampledInOut)
+  }
+
+  def mergeFeatureRDDs(patientData: RDD[SummedGCSPatient],
+                       emptyTimeSeries: RDD[((Long, Long, Timestamp), Int)],
+                       erasureBlock: Int = 5): RDD[(KeyTuple, ValueTuple)] = {
+
+    val sc = patientData.context
+
+    val keyedEvents: RDD[((Long, Long, Timestamp), SummedGCSPatient)] = patientData.map(
+      evt => ((evt.patientId, evt.icuStayId, evt.datetime), evt)
+    )
+
+    val linkedEvents = emptyTimeSeries.leftOuterJoin(
+      keyedEvents
+    ).map({
+      case(k, v) => ((k._1, k._2), (k._3, v._2))
+    }).map({
+      case (k, v) => ((k._1, k._2), (v._1, 0, v._2.getOrElse(
+        new SummedGCSPatient(k._1, k._2, v._1, null, null, null, null, null, null, null, null)
+      )))
+    })
+    val groupedEvents = linkedEvents.groupByKey().mapValues(
+      iter => iter.toList.sortBy(_._1)
+    )
+    val forwardImputed = groupedEvents.mapValues({
+      case list => {
+        val imputedList = new scala.collection.mutable.MutableList[(java.sql.Timestamp, Int, SummedGCSPatient)]()
+        var prevData = list(0)._3
+        for (li <- list) {
+          val patientData = compareAndForwardImpute(prevData, li._3)
+          //yes, this double parens is necessary; first one is for
+          //+=, second is to show this is 1 entry, not 3.
+          imputedList += ((li._1, li._2, patientData))
+          prevData = patientData
+        }
+        imputedList.toList
+      }
+    })
+    val fullyImputed = forwardImputed.mapValues({
+      case list => {
+        val imputedList = new scala.collection.mutable.MutableList[(java.sql.Timestamp, Int, SummedGCSPatient)]()
+        var prevData = list(0)._3
+        for (li <- list.reverse) {
+          val patientData = compareAndForwardImpute(prevData, li._3)
+          //yes, this double parens is necessary; first one is for
+          //+=, second is to show this is 1 entry, not 3.
+          imputedList += ((li._1, li._2, patientData))
+          prevData = patientData
+        }
+        imputedList.toList.reverse
+      }
+    })
+
+    val flatImputed = fullyImputed.flatMapValues(x => x)
+
+    flatImputed.filter({
+      case(k, v) => !patientDataContainsNull(v._3)
+    })
+
   }
 
   def mergeFeatureRDDs(patientData: RDD[PatientData],
@@ -341,6 +451,34 @@ object ETL {
     timeList.toList
   }
 
+  def compareAndForwardImpute(prevData: SummedGCSPatient, curData: SummedGCSPatient): SummedGCSPatient = {
+      val dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+      val pList: List[Any] = extractPatientData(prevData)
+      val cList: List[Any] = extractPatientData(curData)
+      val combinedLists = pList zip cList
+      val imputedList: List[String] = combinedLists.map({
+        case (prev, cur) => {
+          if (cur == null) {
+            if (prev != null) {
+              prev.toString
+            } else {
+              ""
+            }
+          } else {
+            cur.toString
+          }
+        }
+      })
+
+      new SummedGCSPatient(imputedList(0).toLong, imputedList(1).toLong,
+                      new Timestamp(dateFormat.parse(imputedList(2)).getTime),
+                      checkForNull(imputedList(3)), checkForNull(imputedList(4)),
+                      checkForNull(imputedList(5)), checkForNull(imputedList(6)),
+                      checkForNull(imputedList(7)), checkForNull(imputedList(8)),
+                      checkForNull(imputedList(9)),
+                      if (imputedList(10).length > 0) java.lang.Integer.parseInt(imputedList(10)) else null)
+  }
+
   def compareAndForwardImpute(prevData: PatientData, curData: PatientData): PatientData = {
     val dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
     val pList: List[Any] = extractPatientData(prevData)
@@ -377,12 +515,22 @@ object ETL {
     if (value.length > 0) java.lang.Double.valueOf(value.toDouble) else null
   }
 
+  def extractPatientData(data: SummedGCSPatient): List[Any] = {
+    Seq(data.patientId, data.icuStayId, data.datetime, data.bpDia, data.bpSys,
+        data.heartRate, data.respRate, data.temp, data.spo2, data.gcs, data.age).toList
+  }
+
   def extractPatientData(data: PatientData): List[Any] = {
     Seq(data.patientId, data.icuStayId, data.datetime, data.bpDia, data.bpSys,
         data.heartRate, data.respRate, data.temp, data.spo2, data.eyeOp, data.verbal,
         data.motor, data.age).toList
   }
 
+  def patientDataContainsNull(d: SummedGCSPatient): Boolean = {
+    //patientId and icuStayId are guaranteed to not be null (they're a scala Long)
+    d.datetime == null || d.bpDia == null || d.bpSys == null || d.heartRate == null ||
+    d.respRate == null || d.temp == null || d.spo2 == null || d.gcs == null || d.age == null
+  }
   def patientDataContainsNull(d: PatientData): Boolean = {
     //patientId and icuStayId are guaranteed to not be null (they're a scala Long)
     d.datetime == null || d.bpDia == null || d.bpSys == null || d.heartRate == null ||

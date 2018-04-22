@@ -21,6 +21,7 @@ import edu.gatech.cse8803.ml_models._
 import org.apache.spark.mllib.linalg.Vector
 import org.apache.spark.sql.functions.{udf, col, monotonicallyIncreasingId}
 import org.apache.spark.ml.feature.VectorAssembler
+import org.apache.spark.ml.classification.{LogisticRegression, LogisticRegressionModel}
 
 object Main {
   type PatientTuple = (Long, Long, Timestamp, jDouble, jDouble, jDouble,
@@ -74,18 +75,23 @@ object Main {
       val enlcm = enlc.train(trainingData)
       enlcm.write.save("file:///home/bdh/logistic_classifier")
       println(enlc.getAUC())
+
+
     } else if (args(0) == "predict_carevue") {
       val (carePatients, careInOut) = loadLocalRddCareVueData(sqlContext)
-      val slidingOrigDataset: RDD[(Long, Long, Timestamp), (Double, Vector)] =
+      val slidingOrigDataset: RDD[((Long, Long, Timestamp), (Double, Vector))] =
         ETL.getSlidingWindowFeaturesWithOriginalFeaturesCareVue(carePatients, careInOut, 5)
-      val carevueData: DataFrame = ETL.careVueDataFrameFromRDD(slidingOrigDataset)
+      val withoutKey: RDD[(Double, Vector)] = slidingOrigDataset.values
+      val carevueData = sqlContext.createDataFrame(withoutKey).toDF("label", "features")
       val enlcm = LogisticRegressionModel.read.load("file:///home/bdh/logistic_classifier")
       val preds = enlcm.transform(carevueData)
-      val outputPreds = preds.select("predictions").withColumn("id", monotonicallyIncreasingId).rdd
+      val outputPreds = preds.select("prediction").withColumn("id", monotonicallyIncreasingId).rdd.map({
+        r => (r(1).toString.toLong, r(0).toString)
+      })
       val output = slidingOrigDataset.zipWithIndex.map({
-        (k, v) => (k, v._1)
+        case (k, v) => (v, k._1)
       }).join(outputPreds)
-      output.write.csv("file:///home/bdh/predicted_carevue")
+      output.saveAsTextFile("file:///home/bdh/predicted_carevue")
     }
     // else if (args(0) == "logistic") {
     //   println("Running Logistic Classifier")
@@ -123,6 +129,42 @@ object Main {
     sc.stop()
   }
 
+  def loadLocalRddCareVueData(sqlContext: SQLContext): (RDD[SummedGCSPatient], RDD[InOut]) = {
+    val dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+    val homeString = "file:///home/bdh/project/"
+    List(
+      homeString + "carevue_all_features.csv",
+      homeString + "in_out_cv.csv"
+    ).foreach(CSVUtils.loadCSVAsTable(sqlContext, _))
+
+    val patientData: RDD[SummedGCSPatient] = sqlContext.sql(
+      """
+         |SELECT subject_id, icustay_id, charttime, bp_dia, bp_sys, heart_rate,
+         |       resp_rate, temp_f, spo2, gcs, age
+         |FROM carevue_all_features
+      """.stripMargin).
+      map(r => SummedGCSPatient(r(0).toString.toLong, r(1).toString.toLong,
+                             checkDate(r(0).toString, r(2).toString),
+                             checkForNull(r(3)), checkForNull(r(4)),
+                             checkForNull(r(5)), checkForNull(r(6)),
+                             checkForNull(r(7)), checkForNull(r(8)),
+                             checkForNull(r(9)),
+              if (r(10).toString.length > 0) java.lang.Integer.valueOf(r(10).toString.toInt) else null)
+      ).
+      filter({ case pdata => pdata.datetime != null})
+
+    val inOut: RDD[InOut] = sqlContext.sql(
+        """
+          |SELECT subject_id, icustay_id, intime, outtime
+          |FROM in_out_cv
+        """.stripMargin
+    ).filter(r => r(2).toString.length > 0 && r(3).toString.length > 0).
+      map( r => InOut(r(0).toString.toLong, r(1).toString.toLong,
+                        checkDate(r(0).toString, r(2).toString),
+                        checkDate(r(0).toString, r(3).toString))).cache()
+
+    (patientData, inOut)
+  }
   def loadTrainingDataFrame(sqlContext: SQLContext): DataFrame = {
     val homeString = "file:///home/bdh/project/training/"
     val dfList = List(
