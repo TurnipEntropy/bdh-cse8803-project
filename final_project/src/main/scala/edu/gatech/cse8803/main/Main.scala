@@ -59,12 +59,20 @@ object Main {
       slidingOrigDataset.unpersist()
       val negativeSetSize = negativeSet.count
       val positiveSetSize = positiveSet.count
-      val negativeSetTrainingSize = negativeSetSize * 3 / 4
-      val positiveSetTrainingSize = positiveSetSize * 3 / 4
+      val negativeSetTrainingSize = negativeSetSize * 4 / 5
+      val positiveSetTrainingSize = positiveSetSize * 4 / 5
       val negativeSetTestingSize = negativeSetSize - negativeSetTrainingSize
       val positiveSetTestingSize = positiveSetSize - positiveSetTrainingSize
-      val balancingRatio = 0.97
-      for (i <- 0 to 3) {
+      var balancingRatio = 0.97
+      var mixing = 0.15
+      val calculateWeights = udf { d: Double =>
+        if (d == 1.0) {
+          balancingRatio
+        } else {
+          1.0 - balancingRatio
+        }
+      }
+      for (i <- 0 to 4) {
         val negTraining = negativeSet.filter(
           x => x._2 < i * negativeSetTestingSize || x._2 >= (i + 1) * negativeSetTestingSize
         ).map({
@@ -91,21 +99,39 @@ object Main {
 
         val training: DataFrame = sqlContext.createDataFrame(negTraining.union(posTraining)).toDF("label", "features").cache
         val testing: DataFrame = sqlContext.createDataFrame(negTesting.union(posTraining)).toDF("label", "features").cache
-
-        val calculateWeights = udf { d: Double =>
-          if (d == 1.0) {
-            balancingRatio
-          } else {
-            1.0 - balancingRatio
+        //treat first set of training data as hyper-parameter tuning step
+        if (i == 0) {
+          var bestRatio: Double = 0.0
+          var bestMixing: Double = 0.0
+          var bestAUC: Double = 0.0
+          for (preRatio <- 95 to 99) {
+            balancingRatio = preRatio.toDouble / 100.0
+            val weightedTraining = training.withColumn("classWeightCol", calculateWeights(training("label")))
+            for (preMixing <- 2 to 8) {
+              val elasticMixing = preMixing.toDouble / 10.0
+              val enlc = new ElasticNetLogClassifier(standardize = true, maxIter = 10, addWeightsCol = true, elasticNetParam = elasticMixing)
+              val enlcm = enlc.train(weightedTraining)
+              val auc = enlc.getAUC()
+              if (auc > bestAUC) {
+                bestAUC = auc
+                bestRatio = balancingRatio
+                bestMixing = elasticMixing
+              }
+            }
           }
+          balancingRatio = bestRatio
+          mixing = bestMixing
+        } else {
+
+          val weightedTraining = training.withColumn("classWeightCol", calculateWeights(training("label")))
+          val enlc = new ElasticNetLogClassifier(standardize = true, maxIter = 20, addWeightsCol = true, elasticNetParam = mixing)
+          val enlcm = enlc.train(weightedTraining)
+          val predictions = enlc.predict(testing)
+          predictions.write.format("com.databricks.spark.csv").save("file:///home/bdh/project/predictions/" + i.toString)
+          enlc.saveModel("file:///home/bdh/project/logistic_classifier_" + i)
+          training.unpersist()
+          testing.unpersist()
         }
-        val weightedTraining = training.withColumn("classWeightCol", calculateWeights(training("label")))
-        val enlc = new ElasticNetLogClassifier(standardize = true, maxIter = 20, addWeightsCol = true)
-        val enlcm = enlc.train(weightedTraining)
-        val predictions = enlc.predict(testing)
-        predictions.write.format("com.databricks.spark.csv").save("file:///home/bdh/project/predictions/" + i.toString)
-        training.unpersist()
-        testing.unpersist()
       }
 
     }

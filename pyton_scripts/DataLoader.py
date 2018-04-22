@@ -19,6 +19,29 @@ class DataLoader:
         data_files = list(filter(lambda x: re.match(pattern, x) != None, files))
         return data_files
 
+    def read_DataFrame_labels(self):
+        data_files = self.__get_files__()
+        labels = []
+        for file in data_files:
+            with open(self.directory + file) as data:
+                content = data.readlines()
+                for i in range(len(content)):
+                    seq = content[i].split(",")
+                    labels.append(float(seq[0]))
+        return labels
+    
+    
+    def read_DataFrame_pos_probabilities(self):
+        data_files = self.__get_files__()
+        proba = []
+        for file in data_files:
+            with open(self.directory + file) as data:
+                content = data.readlines()
+                for i in range(len(content)):
+                    seq = content[i].split(",")
+                    proba.append(float(seq[19].replace("]", "").replace('"', "")))
+        return proba
+    
     
     def csv_to_2d_ndarray(self, start=0, end=''):
         data_files = self.__get_files__()

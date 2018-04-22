@@ -50,6 +50,10 @@ class ElasticNetLogClassifier (elasticNetParam: Double = 0.15, fitIntercept: Boo
 
   }
 
+  def saveModel(path: String): Unit = {
+    lrm.write.save(path)
+  }
+
   def getEvaluationMetrics(data: DataFrame): RDD[(Int, Int)] = {
     val preds = if (data.toString == prevDataFrame) prevPredictions else predict(data)
     val confusionMatrix = preds.map({
