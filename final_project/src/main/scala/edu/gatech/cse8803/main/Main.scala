@@ -22,6 +22,7 @@ import org.apache.spark.mllib.linalg.Vector
 import org.apache.spark.sql.functions.{udf, col, monotonicallyIncreasingId}
 import org.apache.spark.ml.feature.VectorAssembler
 import org.apache.spark.ml.classification.{LogisticRegression, LogisticRegressionModel}
+import org.apache.spark.sql.Row
 
 object Main {
   type PatientTuple = (Long, Long, Timestamp, jDouble, jDouble, jDouble,
@@ -46,6 +47,68 @@ object Main {
     // ).cache
     //slidingOrigDataset.count
     //slidingDataset.count
+    if (args(0) == "no-yarn") {
+      val (metaPatients, metaInOut, metaSepticLabels) = loadLocalRddMetavisionData(sqlContext)
+      println("Performing ETL")
+      val slidingOrigDataset: RDD[(Double, Vector)] = ETL.getSlidingWindowFeaturesWithOriginalFeatures(
+        metaPatients, metaInOut, metaSepticLabels, 3
+      ).cache
+      slidingOrigDataset.take(125)
+      val negativeSet = slidingOrigDataset.filter(x => x._1 == 0.0).zipWithIndex.cache
+      val positiveSet = slidingOrigDataset.filter(x => x._1 == 1.0).zipWithIndex.cache
+      slidingOrigDataset.unpersist()
+      val negativeSetSize = negativeSet.count
+      val positiveSetSize = positiveSet.count
+      val negativeSetTrainingSize = negativeSetSize * 3 / 4
+      val positiveSetTrainingSize = positiveSetSize * 3 / 4
+      val negativeSetTestingSize = negativeSetSize - negativeSetTrainingSize
+      val positiveSetTestingSize = positiveSetSize - positiveSetTrainingSize
+      val balancingRatio = 0.97
+      for (i <- 0 to 3) {
+        val negTraining = negativeSet.filter(
+          x => x._2 < i * negativeSetTestingSize || x._2 >= (i + 1) * negativeSetTestingSize
+        ).map({
+          x => x._1
+        })
+
+        val posTraining = positiveSet.filter(
+          x => x._2 < i * positiveSetTestingSize || x._2 >= (i + 1) * positiveSetTrainingSize
+        ).map({
+          x => x._1
+        })
+
+        val negTesting = negativeSet.filter(
+          x => x._2 < (i + 1) * negativeSetTestingSize && x._2 >= i * negativeSetTestingSize
+        ).map({
+          x => x._1
+        })
+
+        val posTesting = positiveSet.filter(
+          x => x._2 < (i + 1) * positiveSetTestingSize && x._2 >= i * positiveSetTestingSize
+        ).map({
+          x => x._1
+        })
+
+        val training: DataFrame = sqlContext.createDataFrame(negTraining.union(posTraining)).toDF("label", "features").cache
+        val testing: DataFrame = sqlContext.createDataFrame(negTesting.union(posTraining)).toDF("label", "features").cache
+
+        val calculateWeights = udf { d: Double =>
+          if (d == 1.0) {
+            balancingRatio
+          } else {
+            1.0 - balancingRatio
+          }
+        }
+        val weightedTraining = training.withColumn("classWeightsCol", calculateWeights(training("label")))
+        val enlc = new ElasticNetLogClassifier(standardize = true, maxIter = 20, addWeightsCol = true)
+        val enlcm = enlc.train(training)
+        val predictions = enlc.predict(testing)
+        predictions.write.format("com.databricks.spark.csv").save("file:///home/bdh/project/predictions/" + i.toString)
+        training.unpersist()
+        testing.unpersist()
+      }
+
+    }
     if (args(0) == "etl") {
       println("Running ETL and saving out CSVs of training and test data")
       println("Loading Data")
@@ -60,8 +123,8 @@ object Main {
       slidingOrigDataset.take(125)
       //val negativeArray = slidingOrigDataset.filter($"label" === "0").randomSplit(Array(0.75, 0.25), 8803L)
       //val positiveArray = slidingOrigDataset.filter($"label" === "1").randomSplit(Array(0.75, 0.25), 8803L)
-      val negativeArray = slidingOrigDataset.filter(x => x._1 == 0.0).randomSplit(Array(0.75, 0.25), 8803L)
-      val positiveArray = slidingOrigDataset.filter(x => x._1 == 1.0).randomSplit(Array(0.75, 0.25), 8803L)
+      val negativeArray = slidingOrigDataset.filter(x => x._1 == 0.0).randomSplit(Array(0.75, 0.25), 6630L)
+      val positiveArray = slidingOrigDataset.filter(x => x._1 == 1.0).randomSplit(Array(0.75, 0.25), 6630L)
 
       //negativeArray.take(125000)
       //positiveArray.take(125000)
@@ -69,7 +132,8 @@ object Main {
       negativeArray(1).union(positiveArray(1)).saveAsTextFile("file:///home/bdh/project/test_data")
       // negativeArray(0).unionAll(positiveArray(0)).coalesce(1).write.format("com.databricks.spark.csv").save("file:///home/bdh/project/training_data")
       // negativeArray(1).unionAll(positiveArray(1)).coalesce(1).write.format("com.databricks.spark.csv").save("file:///home/bdh/project/test_data")
-    } else if (args(0) == "logistic_training") {
+
+    } else if (args(0) == "logistic-training") {
       val trainingData: DataFrame = loadTrainingDataFrame(sqlContext)
       val enlc = new ElasticNetLogClassifier(standardize = true)
       val enlcm = enlc.train(trainingData)
@@ -77,7 +141,7 @@ object Main {
       println(enlc.getAUC())
 
 
-    } else if (args(0) == "predict_carevue") {
+    } else if (args(0) == "predict-carevue") {
       val (carePatients, careInOut) = loadLocalRddCareVueData(sqlContext)
       val slidingOrigDataset: RDD[((Long, Long, Timestamp), (Double, Vector))] =
         ETL.getSlidingWindowFeaturesWithOriginalFeaturesCareVue(carePatients, careInOut, 5)
@@ -158,7 +222,7 @@ object Main {
           |SELECT subject_id, icustay_id, intime, outtime
           |FROM in_out_cv
         """.stripMargin
-    ).filter(r => r(2).toString.length > 0 && r(3).toString.length > 0).
+    ).filter("intime not null and outtime not null").
       map( r => InOut(r(0).toString.toLong, r(1).toString.toLong,
                         checkDate(r(0).toString, r(2).toString),
                         checkDate(r(0).toString, r(3).toString))).cache()
@@ -377,7 +441,7 @@ object Main {
   }
 
   def createContext(appName: String, masterUrl: String): SparkContext = {
-    val conf = new SparkConf().setAppName(appName).setMaster(masterUrl)//.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+    val conf = new SparkConf().setAppName(appName).setMaster(masterUrl).set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
     new SparkContext(conf)
   }
 

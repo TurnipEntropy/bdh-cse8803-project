@@ -10,16 +10,24 @@ import edu.gatech.cse8803.main.Main.{PatientTuple, KeyTuple, ValueTuple}
 
 class ElasticNetLogClassifier (elasticNetParam: Double = 0.15, fitIntercept: Boolean = true,
                                maxIter: Int = 10, standardize: Boolean = false,
-                               threshold: Double = 0.5){
-  var model: LogisticRegression = new LogisticRegression().setMaxIter(maxIter).
-                                                           setElasticNetParam(elasticNetParam).
-                                                           setFitIntercept(fitIntercept).
-                                                           setStandardization(standardize).
-                                                           setThreshold(threshold)
+                               threshold: Double = 0.5, addWeightsCol: Boolean = false,
+                               weightsCol: String = "classWeightCol", labelCol: String = "label",
+                               featuresCol: String = "features"){
+  var model: LogisticRegression = if (addWeightsCol) {
+    new LogisticRegression().setMaxIter(maxIter).setElasticNetParam(elasticNetParam).
+                             setFitIntercept(fitIntercept).setStandardization(standardize).
+                             setThreshold(threshold).setLabelCol(labelCol).
+                             setFeaturesCol(featuresCol).setWeightCol(weightsCol)
+  } else {
+    new LogisticRegression().setMaxIter(maxIter).setElasticNetParam(elasticNetParam).
+                             setFitIntercept(fitIntercept).setStandardization(standardize).
+                             setThreshold(threshold).setLabelCol(labelCol).setFeaturesCol(featuresCol)
+  }
 
   var sqlContext: SQLContext = _
   private var lrm: LogisticRegressionModel = _
   var prevPredictions: DataFrame = _
+  var prevDataFrame: String = "0x0"
 
   def train(data: DataFrame): LogisticRegressionModel =  {
     //have to turn it into a DataFrame, with the first entry being the label
@@ -31,13 +39,19 @@ class ElasticNetLogClassifier (elasticNetParam: Double = 0.15, fitIntercept: Boo
   }
 
   def predict(data: DataFrame): DataFrame  = {
-    val pred = lrm.transform(data)
-    prevPredictions = pred
-    pred
+    if (data.toString == prevDataFrame) {
+      prevPredictions
+    } else {
+      prevDataFrame = data.toString
+      val pred = lrm.transform(data)
+      prevPredictions = pred
+      pred
+    }
+
   }
 
   def getEvaluationMetrics(data: DataFrame): RDD[(Int, Int)] = {
-    val preds = predict(data)
+    val preds = if (data.toString == prevDataFrame) prevPredictions else predict(data)
     val confusionMatrix = preds.map({
       case row => if (row(0).toString.toDouble == 0.0 && row(4).toString.toDouble == 0.0){
         (0, 1)

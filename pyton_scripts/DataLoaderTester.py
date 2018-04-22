@@ -18,8 +18,8 @@ class DataLoaderTester:
     
 def main():
     tester = DataLoaderTester()
-    data = tester.test_csv_to_2d_ndarray()
-    print(data)
+    data = tester.data_loader.read_features()
+    print("data sent")
 
 if __name__ == '__main__':
     main()

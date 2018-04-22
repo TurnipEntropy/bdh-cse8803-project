@@ -46,14 +46,13 @@ class DataLoader:
     
     def read_labels(self):
         data_files = self.__get_files__()
-        labels = {}
+        labels = []
         for file in data_files:
             with open(self.directory + file) as data:
                 content = data.readlines()
                 for i in range(len(content)):
                     seq = content[i].split(",")
-                    icu_id = seq[5]
-                    labels[icu_id] = seq[3]
+                    labels.append(seq[3])
         return labels
     
     
@@ -65,10 +64,11 @@ class DataLoader:
         for file in data_files:
             with open(self.directory + file) as data:
                 content = data.readlines()
+                print(file)
                 for i in range(len(content)):
                     seq = content[i].split(",")
                     icu_id = seq[5]
-                    data_str = seq[7:13]
+                    data_str = seq[7:14]
                     data_str.append(seq[14].replace(")", ""))
                     data_arr = np.array(list(float(x.strip()) for x in data_str))
                     if (icu_id in hash_table):
@@ -76,11 +76,14 @@ class DataLoader:
                     else:
                         hash_table[icu_id] = []
                         hash_table[icu_id].append(data_arr)
-                        
+        
+        ks = len(hash_table.keys())
+        counter = 0             
         for k, v in hash_table.items():
             arrs = np.array(v)
             Xs.append(arrs)
             sizes.append((arrs.shape)[0])
+            counter += 1
         return (Xs, sizes)
     
     
@@ -96,7 +99,7 @@ class DataLoader:
                 for i in range(len(content)):
                     seq = content[i].split(",")
                     icu_id = seq[5]
-                    data_str = seq[7:13]
+                    data_str = seq[7:14]
                     data_str.append(seq[14].replace(")", ""))
                     data_arr = np.array(list(float(x.strip()) for x in data_str))
                     labels[icu_id] = seq[3]

@@ -1,12 +1,17 @@
+import AssemblyKeys._
+seq(assemblySettings: _*)
+
 name := "final_project"
 
 version := "1.0"
 
 scalaVersion := "2.10.5"
 
+retrieveManaged := true
 resolvers ++= Seq(
   Resolver.sonatypeRepo("releases"),
-  Resolver.sonatypeRepo("snapshots")
+  Resolver.sonatypeRepo("snapshots"),
+  Resolver.sonatypeRepo("public")
 )
 
 evictionWarningOptions in update :=
@@ -28,3 +33,6 @@ libraryDependencies ++= Seq(
 libraryDependencies += "org.scalatest" % "scalatest_2.10" % "2.2.1" % "test"
 
 parallelExecution in Test := false
+
+
+mainClass in assembly := Some("Main")
