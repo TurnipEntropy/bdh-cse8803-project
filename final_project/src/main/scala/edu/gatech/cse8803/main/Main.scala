@@ -135,6 +135,25 @@ object Main {
       }
 
     }
+
+    if (args(0) == "predict-carevue") {
+      val threshold = args(1).toDouble
+      val (carePatients, careInOut) = loadLocalRddCareVueData(sqlContext)
+      val slidingOrigDataset: RDD[((Long, Long, Timestamp), (Double, Vector))] =
+        ETL.getSlidingWindowFeaturesWithOriginalFeaturesCareVue(carePatients, careInOut, 5)
+      val withoutKey:RDD[(Double, Vector)] = slidingOrigDataset.values
+      val carevueData = sqlContext.createDataFrame(withoutKey).toDF("label", "features")
+      val enlcm = LogisticRegressionModel.read.load("file:///home/bdh/project/logistic_classifiers/logistic_classifier_1").setThreshold(threshold)
+      val preds = enlcm.transform(carevueData)
+      val outputPreds = preds.select("prediction", "features").withColumn("id", monotonicallyIncreasingId).rdd.map({
+        r => (r(2).toString.toLong, (r(0).toString, r(1).toString))
+      })
+      val output = slidingOrigDataset.zipWithIndex.map({
+        case (k,v) => (v, k._1)
+      }).join(outputPreds)
+      output.saveAsTextFile("file:///home/bdh/project/predicted_carevue")
+
+    }
     if (args(0) == "etl") {
       println("Running ETL and saving out CSVs of training and test data")
       println("Loading Data")
@@ -167,7 +186,7 @@ object Main {
       println(enlc.getAUC())
 
 
-    } else if (args(0) == "predict-carevue") {
+    } else if (args(0) == "predict-carevue-old") {
       val (carePatients, careInOut) = loadLocalRddCareVueData(sqlContext)
       val slidingOrigDataset: RDD[((Long, Long, Timestamp), (Double, Vector))] =
         ETL.getSlidingWindowFeaturesWithOriginalFeaturesCareVue(carePatients, careInOut, 5)
@@ -248,7 +267,7 @@ object Main {
           |SELECT subject_id, icustay_id, intime, outtime
           |FROM in_out_cv
         """.stripMargin
-    ).filter("intime not null and outtime not null").
+    ).filter("intime is not null and outtime is not null and intime != '' and outtime != ''").
       map( r => InOut(r(0).toString.toLong, r(1).toString.toLong,
                         checkDate(r(0).toString, r(2).toString),
                         checkDate(r(0).toString, r(3).toString))).cache()
